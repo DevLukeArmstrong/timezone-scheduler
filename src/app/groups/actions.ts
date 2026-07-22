@@ -22,9 +22,8 @@ export async function createGroupAction(
 
   const name = String(formData.get("name") ?? "");
 
-  let group;
   try {
-    group = await createGroup({ ownerId: userId, name });
+    await createGroup({ ownerId: userId, name });
   } catch (error) {
     if (error instanceof ServiceError) {
       return { error: error.message };
@@ -33,5 +32,5 @@ export async function createGroupAction(
   }
 
   revalidatePath("/groups");
-  redirect(`/groups/${group.id}`);
+  redirect("/groups");
 }

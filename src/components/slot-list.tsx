@@ -1,9 +1,10 @@
-import type { AvailabilitySlot } from "@/lib/db";
+import { isSameDay } from "date-fns";
+import type { GroupAvailabilitySlot } from "@/lib/services/availability";
 import { utcToWallClock } from "@/lib/timezone";
-import { deleteAvailabilitySlotAction } from "@/app/dashboard/actions";
+import { deleteCalendarAvailabilitySlotAction } from "@/app/calendar/actions";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 
-function formatSlot(slot: AvailabilitySlot, timeZone: string): string {
+function formatSlot(slot: GroupAvailabilitySlot, timeZone: string, showGroupName: boolean): string {
   const start = utcToWallClock(slot.startTime, timeZone);
   const end = utcToWallClock(slot.endTime, timeZone);
   const dateFmt = new Intl.DateTimeFormat("en-US", {
@@ -17,14 +18,21 @@ function formatSlot(slot: AvailabilitySlot, timeZone: string): string {
     minute: "2-digit",
     timeZone,
   });
-  return `${dateFmt.format(start)} · ${timeFmt.format(start)} – ${timeFmt.format(end)}`;
+
+  const range = isSameDay(start, end)
+    ? `${dateFmt.format(start)} · ${timeFmt.format(start)} – ${timeFmt.format(end)}`
+    // A slot spanning midnight (or several days) — show both dates so it's
+    // clear the end time belongs to a different day.
+    : `${dateFmt.format(start)} ${timeFmt.format(start)} → ${dateFmt.format(end)} ${timeFmt.format(end)}`;
+
+  return showGroupName ? `${range} · ${slot.group.name}` : range;
 }
 
 export function SlotList({
   slots,
   timeZone,
 }: {
-  slots: AvailabilitySlot[];
+  slots: GroupAvailabilitySlot[];
   timeZone: string;
 }) {
   if (slots.length === 0) {
@@ -35,17 +43,21 @@ export function SlotList({
     );
   }
 
+  // Once the viewer's own slots span more than one group, each entry needs
+  // its group name to stay unambiguous.
+  const showGroupName = new Set(slots.map((slot) => slot.group.id)).size > 1;
+
   return (
     <ul className="space-y-2">
       {slots.map((slot) => {
-        const label = formatSlot(slot, timeZone);
+        const label = formatSlot(slot, timeZone, showGroupName);
         return (
           <li
             key={slot.id}
             className="flex items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300"
           >
             <span>{label}</span>
-            <form action={deleteAvailabilitySlotAction.bind(null, slot.id)}>
+            <form action={deleteCalendarAvailabilitySlotAction.bind(null, slot.id)}>
               <ConfirmSubmitButton
                 confirmMessage={`Remove this availability slot (${label})?`}
                 title="Remove this slot"

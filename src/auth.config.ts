@@ -19,20 +19,20 @@ export const authConfig = {
     authorized({ auth, request }) {
       const isLoggedIn = !!auth?.user;
       const { pathname } = request.nextUrl;
-      const isOnDashboard = pathname.startsWith("/dashboard");
-      // Covers /groups, /groups/[groupId], AND /groups/join/[token] — the
-      // invite-link route deliberately gets no special-case here. Returning
-      // `false` makes Auth.js redirect to `/login` with a `callbackUrl`
-      // pointing right back at the invite link, so signing in or
-      // registering bounces the visitor straight back to complete the join.
+      const isOnCalendar = pathname.startsWith("/calendar");
+      // Covers /groups AND /groups/join/[token] — the invite-link route
+      // deliberately gets no special-case here. Returning `false` makes
+      // Auth.js redirect to `/login` with a `callbackUrl` pointing right
+      // back at the invite link, so signing in or registering bounces the
+      // visitor straight back to complete the join.
       const isOnGroups = pathname.startsWith("/groups");
       const isOnAuthPage = pathname === "/login" || pathname === "/register";
 
-      if (isOnDashboard || isOnGroups) {
+      if (isOnCalendar || isOnGroups) {
         return isLoggedIn;
       }
       if (isOnAuthPage && isLoggedIn) {
-        return Response.redirect(new URL("/dashboard", request.nextUrl));
+        return Response.redirect(new URL("/calendar", request.nextUrl));
       }
       return true;
     },

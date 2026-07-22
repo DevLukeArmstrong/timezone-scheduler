@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { TimeZoneSelect } from "@/components/timezone-select";
-import { signOutAction, updateTimezoneAction } from "@/app/dashboard/actions";
+import { signOutAction, updateTimezoneAction } from "@/app/actions";
 
 interface AppHeaderProps {
   user: {
@@ -8,11 +8,11 @@ interface AppHeaderProps {
     email: string;
     timezone: string;
   };
-  activeNav: "dashboard" | "groups";
+  activeNav: "calendar" | "groups";
 }
 
 const NAV_LINKS = [
-  { href: "/dashboard", label: "Dashboard", key: "dashboard" as const },
+  { href: "/calendar", label: "Calendar", key: "calendar" as const },
   { href: "/groups", label: "Groups", key: "groups" as const },
 ];
 

@@ -9,10 +9,10 @@ export function GroupMemberList({
   viewerId: string;
 }) {
   return (
-    <section className="space-y-2 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+    <div className="space-y-1.5">
+      <h3 className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
         Members ({members.length})
-      </h2>
+      </h3>
       <ul className="space-y-1.5">
         {members.map((member, index) => {
           const color = getMemberColor(index);
@@ -37,6 +37,6 @@ export function GroupMemberList({
           );
         })}
       </ul>
-    </section>
+    </div>
   );
 }

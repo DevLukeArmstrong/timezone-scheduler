@@ -1,13 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import {
-  addGroupAvailabilitySlotAction,
-  type GroupActionState,
-} from "@/app/groups/[groupId]/actions";
+  addCalendarAvailabilitySlotAction,
+  type CalendarActionState,
+} from "@/app/calendar/actions";
 import { TimeZoneSelect } from "@/components/timezone-select";
 
-const initialState: GroupActionState = {};
+const initialState: CalendarActionState = {};
 
 const INPUT_CLASSNAME =
   "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100";
@@ -22,17 +23,44 @@ function todayIso(): string {
   ).padStart(2, "0")}`;
 }
 
-export function GroupAvailabilityForm({
-  groupId,
-  defaultTimeZone,
-}: {
-  groupId: string;
+interface CalendarAvailabilityFormProps {
+  groups: { id: string; name: string }[];
+  defaultGroupId?: string;
   defaultTimeZone: string;
-}) {
+}
+
+/**
+ * Adds an availability slot to one of the user's groups. Every slot on the
+ * unified calendar belongs to exactly one group (no more "personal, no
+ * group" availability), so this form always includes a group picker.
+ */
+export function CalendarAvailabilityForm({
+  groups,
+  defaultGroupId,
+  defaultTimeZone,
+}: CalendarAvailabilityFormProps) {
   const [state, formAction, pending] = useActionState(
-    addGroupAvailabilitySlotAction.bind(null, groupId),
+    addCalendarAvailabilitySlotAction,
     initialState,
   );
+
+  if (groups.length === 0) {
+    return (
+      <div className="space-y-2 rounded-xl border border-dashed border-zinc-300 bg-white p-4 text-sm text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
+        <h2 className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+          Add availability
+        </h2>
+        <p>
+          You&apos;re not in any groups yet — availability is always shared
+          inside a group. Head to{" "}
+          <Link href="/groups" className="font-medium underline">
+            Groups
+          </Link>{" "}
+          to create or join one first.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <form
@@ -40,12 +68,31 @@ export function GroupAvailabilityForm({
       className="space-y-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
     >
       <h2 className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-        Add your availability
+        Add availability
       </h2>
 
       <div className="space-y-1.5">
+        <label htmlFor="groupId" className={LABEL_CLASSNAME}>
+          Group
+        </label>
+        <select
+          name="groupId"
+          id="groupId"
+          required
+          defaultValue={defaultGroupId ?? groups[0]?.id}
+          className={INPUT_CLASSNAME}
+        >
+          {groups.map((group) => (
+            <option key={group.id} value={group.id}>
+              {group.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="space-y-1.5">
         <label htmlFor="date" className={LABEL_CLASSNAME}>
-          Date
+          Start date
         </label>
         <input
           type="date"
@@ -60,7 +107,7 @@ export function GroupAvailabilityForm({
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1.5">
           <label htmlFor="startTime" className={LABEL_CLASSNAME}>
-            Start
+            Start time
           </label>
           <input
             type="time"
@@ -73,7 +120,7 @@ export function GroupAvailabilityForm({
         </div>
         <div className="space-y-1.5">
           <label htmlFor="endTime" className={LABEL_CLASSNAME}>
-            End
+            End time
           </label>
           <input
             type="time"
@@ -84,6 +131,17 @@ export function GroupAvailabilityForm({
             className={INPUT_CLASSNAME}
           />
         </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <label htmlFor="endDate" className={LABEL_CLASSNAME}>
+          End date
+        </label>
+        <input type="date" name="endDate" id="endDate" className={INPUT_CLASSNAME} />
+        <p className="text-xs text-zinc-400 dark:text-zinc-500">
+          Leave blank for a same-day slot. Pick a later date for a slot that
+          spans midnight (e.g. 5 PM–2 AM).
+        </p>
       </div>
 
       <div className="space-y-1.5">

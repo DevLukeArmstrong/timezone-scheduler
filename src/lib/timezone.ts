@@ -46,6 +46,30 @@ export function listIanaTimeZones(): string[] {
   return FALLBACK_TIME_ZONES;
 }
 
+/**
+ * Zones surfaced first in {@link listIanaTimeZonesPinned}, in this order,
+ * ahead of the alphabetical rest — these are the team's most common zones.
+ */
+export const PINNED_TIME_ZONES = [
+  "America/Vancouver",
+  "Australia/Melbourne",
+  "Pacific/Auckland",
+] as const;
+
+/**
+ * Like {@link listIanaTimeZones}, but with {@link PINNED_TIME_ZONES} moved to
+ * the front (in that order) ahead of the alphabetical rest, for UIs that want
+ * to surface the team's common zones without hiding any of the others.
+ */
+export function listIanaTimeZonesPinned(): string[] {
+  const all = listIanaTimeZones();
+  const allSet = new Set(all);
+  const pinned = PINNED_TIME_ZONES.filter((tz) => allSet.has(tz));
+  const pinnedSet = new Set<string>(pinned);
+  const rest = all.filter((tz) => !pinnedSet.has(tz));
+  return [...pinned, ...rest];
+}
+
 export function isValidTimeZone(timeZone: string): boolean {
   if (!timeZone) return false;
   try {

@@ -10,38 +10,52 @@ import {
 import type { WallClockTime } from "@/lib/timezone";
 import { ServiceError } from "@/lib/errors";
 
-export interface GroupActionState {
+export interface CalendarActionState {
   error?: string;
 }
 
-const NO_ERROR: GroupActionState = {};
+const NO_ERROR: CalendarActionState = {};
 
-export async function addGroupAvailabilitySlotAction(
-  groupId: string,
-  _prevState: GroupActionState,
+/**
+ * Adds a slot to one of the current user's groups. Every slot on the
+ * group-aware calendar belongs to exactly one group — there's no
+ * "personal, no group" availability anymore — so `groupId` is required and
+ * always re-validated server-side via `getGroupForMember`, never trusted
+ * from the submitted form alone.
+ */
+export async function addCalendarAvailabilitySlotAction(
+  _prevState: CalendarActionState,
   formData: FormData,
-): Promise<GroupActionState> {
+): Promise<CalendarActionState> {
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) {
     return { error: "Please sign in before adding availability." };
   }
 
-  // Authorization gate — never trust `groupId` (bound client-side) alone;
-  // confirm server-side that this user is actually a member before writing
-  // anything scoped to the group.
+  const groupId = String(formData.get("groupId") ?? "").trim();
+  if (!groupId) {
+    return { error: "Please choose a group for this availability." };
+  }
+
+  // Authorization gate — never trust `groupId` (a hidden/selected form
+  // value) alone; confirm server-side that this user is actually a member
+  // before writing anything scoped to the group.
   const group = await getGroupForMember(groupId, userId);
   if (!group) {
-    return { error: "You are not a member of this group." };
+    return { error: "You are not a member of that group." };
   }
 
   const date = String(formData.get("date") ?? "");
   const startTime = String(formData.get("startTime") ?? "");
   const endTime = String(formData.get("endTime") ?? "");
+  // An empty end date means "same day as the start" — the common case.
+  // Picking a later end date is what lets a slot span midnight.
+  const endDate = String(formData.get("endDate") ?? "").trim() || date;
   const timeZone = String(formData.get("timeZone") ?? "").trim() || undefined;
 
   const start = parseDateAndTime(date, startTime);
-  const end = parseDateAndTime(date, endTime);
+  const end = parseDateAndTime(endDate, endTime);
   if (!start || !end) {
     return { error: "Please provide a valid date and start/end time." };
   }
@@ -52,27 +66,24 @@ export async function addGroupAvailabilitySlotAction(
     return { error: describeError(error) };
   }
 
-  revalidatePath(`/groups/${groupId}`);
+  revalidatePath("/calendar");
   return NO_ERROR;
 }
 
 /**
- * Deletes one of the *current user's own* slots inside a group.
- * `deleteAvailabilitySlot` scopes the delete to `(slotId, userId)`, so this
- * can never remove another member's slot even if `slotId` is guessed or a
- * request is forged directly — the ownership check happens server-side,
- * not just by hiding the delete control in the UI.
+ * Deletes one of the *current user's own* slots. `deleteAvailabilitySlot`
+ * scopes the delete to `(slotId, userId)`, so this can never remove another
+ * member's slot even if `slotId` is guessed or a request is forged
+ * directly — which group the slot belongs to doesn't matter here, only
+ * ownership does.
  */
-export async function deleteGroupAvailabilitySlotAction(
-  groupId: string,
-  slotId: string,
-): Promise<void> {
+export async function deleteCalendarAvailabilitySlotAction(slotId: string): Promise<void> {
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) return;
 
   await deleteAvailabilitySlot(userId, slotId);
-  revalidatePath(`/groups/${groupId}`);
+  revalidatePath("/calendar");
 }
 
 function parseDateAndTime(date: string, time: string): WallClockTime | null {

@@ -97,46 +97,55 @@ export async function createAvailabilitySlotFromLocalTime(
   });
 }
 
-/**
- * Lists a single user's slots. With no `groupId`, that's their personal
- * dashboard availability; pass a `groupId` to see just their slots inside
- * that group. To see *everyone's* slots in a group, use
- * `listAvailabilitySlotsForGroup` instead.
- */
-export async function listAvailabilitySlots(
-  userId: string,
-  groupId?: string,
-): Promise<AvailabilitySlot[]> {
-  return db.availabilitySlot.findMany({
-    where: { userId, groupId: groupId ?? null },
-    orderBy: { startTime: "asc" },
-  });
-}
-
 const GROUP_SLOT_OWNER_SELECT = {
   id: true,
   name: true,
   email: true,
 } as const;
 
-export type GroupAvailabilitySlot = Prisma.AvailabilitySlotGetPayload<{
-  include: { user: { select: typeof GROUP_SLOT_OWNER_SELECT } };
+const GROUP_SLOT_GROUP_SELECT = {
+  id: true,
+  name: true,
+} as const;
+
+type GroupAvailabilitySlotRaw = Prisma.AvailabilitySlotGetPayload<{
+  include: {
+    user: { select: typeof GROUP_SLOT_OWNER_SELECT };
+    group: { select: typeof GROUP_SLOT_GROUP_SELECT };
+  };
 }>;
 
 /**
- * Lists every member's availability inside a group — this is what powers
- * the shared "see my friends' times" calendar. Callers MUST have already
- * verified the requester is a member of `groupId` (see
- * `groups.ts#getGroupForMember`); this function itself doesn't check.
+ * A slot annotated with both its owner and its (non-null) group — the shape
+ * the group-aware calendar renders. The `group` field is always present
+ * because every slot returned by `listAvailabilitySlotsForGroups` belongs
+ * to one of the requested groups.
  */
-export async function listAvailabilitySlotsForGroup(
-  groupId: string,
+export type GroupAvailabilitySlot = Omit<GroupAvailabilitySlotRaw, "group"> & {
+  group: NonNullable<GroupAvailabilitySlotRaw["group"]>;
+};
+
+/**
+ * Lists every member's availability across one or more groups at once —
+ * this is what powers the group-aware calendar's overlay view, whether
+ * showing a single group or several side by side. Callers MUST have
+ * already verified the requester is a member of every id in `groupIds`
+ * (see `groups.ts#getGroupForMember`); this function itself doesn't check.
+ * Returns `[]` without querying when `groupIds` is empty.
+ */
+export async function listAvailabilitySlotsForGroups(
+  groupIds: string[],
 ): Promise<GroupAvailabilitySlot[]> {
+  if (groupIds.length === 0) return [];
+
   return db.availabilitySlot.findMany({
-    where: { groupId },
+    where: { groupId: { in: groupIds } },
     orderBy: { startTime: "asc" },
-    include: { user: { select: GROUP_SLOT_OWNER_SELECT } },
-  });
+    include: {
+      user: { select: GROUP_SLOT_OWNER_SELECT },
+      group: { select: GROUP_SLOT_GROUP_SELECT },
+    },
+  }) as Promise<GroupAvailabilitySlot[]>;
 }
 
 /**

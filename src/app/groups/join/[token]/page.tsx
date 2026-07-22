@@ -33,5 +33,7 @@ export default async function JoinGroupPage({
     throw error;
   }
 
-  redirect(`/groups/${group.id}`);
+  // Land them straight on the calendar, filtered to the group they just
+  // joined, so the invite link's payoff is immediate.
+  redirect(`/calendar?groups=${group.id}`);
 }

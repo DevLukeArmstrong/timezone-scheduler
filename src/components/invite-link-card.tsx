@@ -27,18 +27,16 @@ export function InviteLinkCard({ inviteToken }: { inviteToken: string }) {
   }
 
   return (
-    <section className="space-y-2 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+    <div className="space-y-1.5">
+      <h3 className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
         Invite link
-      </h2>
-      <p className="text-xs text-zinc-400 dark:text-zinc-500">
-        Anyone with this link can join — there&apos;s no public list of groups.
-      </p>
+      </h3>
       <div className="flex items-center gap-1.5">
         <input
           type="text"
           readOnly
           value={link}
+          aria-label="Invite link"
           onFocus={(event) => event.currentTarget.select()}
           className="w-full truncate rounded-lg border border-zinc-300 bg-zinc-50 px-2 py-1.5 text-xs text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
         />
@@ -50,6 +48,9 @@ export function InviteLinkCard({ inviteToken }: { inviteToken: string }) {
           {copied ? "Copied!" : "Copy"}
         </button>
       </div>
-    </section>
+      <p className="text-xs text-zinc-400 dark:text-zinc-500">
+        Anyone with this link can join — there&apos;s no public list of groups.
+      </p>
+    </div>
   );
 }
