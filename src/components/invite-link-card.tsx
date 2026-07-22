@@ -1,11 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
+import { regenerateInviteTokenAction, type GroupMemberActionState } from "@/app/groups/actions";
+import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 
-export function InviteLinkCard({ inviteToken }: { inviteToken: string }) {
+const initialState: GroupMemberActionState = {};
+
+export function InviteLinkCard({
+  groupId,
+  inviteToken,
+  isAdmin,
+}: {
+  groupId: string;
+  inviteToken: string;
+  /** Only the owner/admin can regenerate — enforced again server-side by
+   * `regenerateInviteToken` via `getGroupForAdmin`, this just decides
+   * whether to render the button. */
+  isAdmin: boolean;
+}) {
   const relativePath = `/groups/join/${inviteToken}`;
   const [link, setLink] = useState(relativePath);
   const [copied, setCopied] = useState(false);
+  const [state, regenerateFormAction, regeneratePending] = useActionState(
+    regenerateInviteTokenAction.bind(null, groupId),
+    initialState,
+  );
 
   useEffect(() => {
     // The origin is only knowable client-side, after mount — there's no way
@@ -28,9 +47,22 @@ export function InviteLinkCard({ inviteToken }: { inviteToken: string }) {
 
   return (
     <div className="space-y-1.5">
-      <h3 className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-        Invite link
-      </h3>
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+          Invite link
+        </h3>
+        {isAdmin && (
+          <form action={regenerateFormAction}>
+            <ConfirmSubmitButton
+              confirmMessage="Regenerate the invite link? The old link will stop working immediately."
+              disabled={regeneratePending}
+              className="text-xs font-medium text-zinc-500 underline-offset-2 transition-colors hover:text-zinc-700 hover:underline disabled:cursor-not-allowed disabled:opacity-60 dark:text-zinc-400 dark:hover:text-zinc-200"
+            >
+              {regeneratePending ? "Regenerating…" : "Regenerate"}
+            </ConfirmSubmitButton>
+          </form>
+        )}
+      </div>
       <div className="flex items-center gap-1.5">
         <input
           type="text"
@@ -48,6 +80,7 @@ export function InviteLinkCard({ inviteToken }: { inviteToken: string }) {
           {copied ? "Copied!" : "Copy"}
         </button>
       </div>
+      {state.error && <p className="text-xs text-red-600 dark:text-red-400">{state.error}</p>}
       <p className="text-xs text-zinc-400 dark:text-zinc-500">
         Anyone with this link can join — there&apos;s no public list of groups.
       </p>

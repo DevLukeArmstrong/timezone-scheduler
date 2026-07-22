@@ -51,14 +51,20 @@ export default async function GroupsPage() {
             </p>
           ) : (
             <div className="space-y-3">
-              {groups.map((group, index) => (
-                <GroupManagementCard
-                  key={group.id}
-                  group={group}
-                  members={memberLists[index]}
-                  viewerId={user.id}
-                />
-              ))}
+              {groups.map((group, index) => {
+                const members = memberLists[index];
+                const viewerRole = members.find((member) => member.id === user.id)?.role;
+                const viewerIsAdmin = viewerRole === "OWNER" || viewerRole === "ADMIN";
+                return (
+                  <GroupManagementCard
+                    key={group.id}
+                    group={group}
+                    members={members}
+                    viewerId={user.id}
+                    viewerIsAdmin={viewerIsAdmin}
+                  />
+                );
+              })}
             </div>
           )}
         </section>

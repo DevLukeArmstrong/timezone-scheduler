@@ -28,3 +28,11 @@ export class ConflictError extends ServiceError {
     this.name = "ConflictError";
   }
 }
+
+/** Caller is authenticated and the resource exists, but lacks the role/permission required. */
+export class ForbiddenError extends ServiceError {
+  constructor(message: string) {
+    super(message, "FORBIDDEN");
+    this.name = "ForbiddenError";
+  }
+}

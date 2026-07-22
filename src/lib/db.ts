@@ -24,4 +24,4 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 export type { User, AvailabilitySlot, Group, GroupMembership } from "../../prisma/generated/client";
-export { Prisma } from "../../prisma/generated/client";
+export { Prisma, GroupRole } from "../../prisma/generated/client";

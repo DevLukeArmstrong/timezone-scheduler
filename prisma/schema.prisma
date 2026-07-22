@@ -70,11 +70,22 @@ model Group {
   availabilitySlots AvailabilitySlot[]
 }
 
+/// A member's standing within one group. OWNER is unique per group (the
+/// creator, set at `Group` creation) and can never be demoted or removed.
+/// ADMIN and OWNER can manage membership (promote/demote/remove/regenerate
+/// the invite link); MEMBER has read-only access to the member list.
+enum GroupRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
 model GroupMembership {
-  id       String   @id @default(cuid())
+  id       String    @id @default(cuid())
   groupId  String
   userId   String
-  joinedAt DateTime @default(now())
+  role     GroupRole @default(MEMBER)
+  joinedAt DateTime  @default(now())
 
   group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)

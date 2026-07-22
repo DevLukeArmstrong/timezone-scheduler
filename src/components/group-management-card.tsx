@@ -7,15 +7,21 @@ interface GroupManagementCardProps {
   group: Group;
   members: GroupMemberSummary[];
   viewerId: string;
+  /** Whether the viewer is this group's OWNER or an ADMIN. */
+  viewerIsAdmin: boolean;
 }
 
 /**
- * One group's management panel on `/groups`: its invite link, its member
- * list, and a placeholder for role management. Editing who's an admin vs.
- * a regular member is a later task — this section exists so the eventual
- * UI has an obvious home, without building any roles yet.
+ * One group's management panel on `/groups`: its invite link (regenerable
+ * by owners/admins) and its member list (promote/demote/remove for
+ * owners/admins, read-only for everyone else).
  */
-export function GroupManagementCard({ group, members, viewerId }: GroupManagementCardProps) {
+export function GroupManagementCard({
+  group,
+  members,
+  viewerId,
+  viewerIsAdmin,
+}: GroupManagementCardProps) {
   return (
     <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
       <div className="flex items-center justify-between gap-2">
@@ -27,14 +33,14 @@ export function GroupManagementCard({ group, members, viewerId }: GroupManagemen
         </span>
       </div>
 
-      <InviteLinkCard inviteToken={group.inviteToken} />
+      <InviteLinkCard groupId={group.id} inviteToken={group.inviteToken} isAdmin={viewerIsAdmin} />
 
-      <GroupMemberList members={members} viewerId={viewerId} />
-
-      <div className="rounded-lg border border-dashed border-zinc-300 p-3 text-xs text-zinc-400 dark:border-zinc-700 dark:text-zinc-500">
-        Roles &amp; permissions (owner vs. admin vs. member) are coming in a
-        later update — for now every member has equal access.
-      </div>
+      <GroupMemberList
+        groupId={group.id}
+        members={members}
+        viewerId={viewerId}
+        viewerIsAdmin={viewerIsAdmin}
+      />
     </div>
   );
 }

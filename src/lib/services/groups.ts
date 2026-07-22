@@ -1,6 +1,6 @@
 import { randomBytes } from "crypto";
-import { db, type Group } from "@/lib/db";
-import { NotFoundError, ValidationError } from "@/lib/errors";
+import { db, GroupRole, type Group } from "@/lib/db";
+import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
 
 const NAME_MAX_LENGTH = 60;
 
@@ -32,7 +32,7 @@ export async function createGroup(input: CreateGroupInput): Promise<Group> {
       ownerId: input.ownerId,
       inviteToken: generateInviteToken(),
       memberships: {
-        create: { userId: input.ownerId },
+        create: { userId: input.ownerId, role: GroupRole.OWNER },
       },
     },
   });
@@ -54,6 +54,26 @@ export async function getGroupForMember(
     include: { group: true },
   });
   return membership?.group ?? null;
+}
+
+/**
+ * The authorization gate for group *management* actions — promoting,
+ * demoting, removing a member, or regenerating the invite link. Mirrors
+ * `getGroupForMember`'s shape (look up scoped to the caller, `null` if it
+ * doesn't apply) but additionally requires the caller's role to be OWNER or
+ * ADMIN. Every management service function below calls this first and
+ * never trusts a role claim from the client — hiding a button in the UI is
+ * not an authorization check.
+ */
+export async function getGroupForAdmin(groupId: string, userId: string): Promise<Group | null> {
+  const membership = await db.groupMembership.findUnique({
+    where: { groupId_userId: { groupId, userId } },
+    include: { group: true },
+  });
+  if (!membership || membership.role === GroupRole.MEMBER) {
+    return null;
+  }
+  return membership.group;
 }
 
 /** Looks up a group by its invite link token. Never expose this by id. */
@@ -96,6 +116,8 @@ export interface GroupMemberSummary {
   name: string | null;
   email: string;
   joinedAt: Date;
+  role: GroupRole;
+  /** Convenience flag, equivalent to `role === GroupRole.OWNER`. */
   isOwner: boolean;
 }
 
@@ -120,6 +142,130 @@ export async function listGroupMembers(groupId: string): Promise<GroupMemberSumm
     name: membership.user.name,
     email: membership.user.email,
     joinedAt: membership.joinedAt,
-    isOwner: membership.user.id === group.ownerId,
+    role: membership.role,
+    isOwner: membership.role === GroupRole.OWNER,
   }));
+}
+
+/**
+ * Whether `userId` may manage `groupId`'s membership (OWNER or ADMIN).
+ * Thin wrapper around `getGroupForAdmin` for call sites — pages, mostly —
+ * that only need a boolean to decide what to render, not the group itself.
+ */
+export async function isGroupAdmin(groupId: string, userId: string): Promise<boolean> {
+  return (await getGroupForAdmin(groupId, userId)) !== null;
+}
+
+/**
+ * Promotes a MEMBER to ADMIN. Callable by the group's OWNER or an existing
+ * ADMIN — enforced here via `getGroupForAdmin`, not left to the UI.
+ * Idempotent: promoting an existing ADMIN (or the OWNER) is a no-op rather
+ * than an error.
+ */
+export async function promoteMemberToAdmin(
+  groupId: string,
+  actingUserId: string,
+  targetUserId: string,
+): Promise<void> {
+  const group = await getGroupForAdmin(groupId, actingUserId);
+  if (!group) {
+    throw new ForbiddenError("Only the group owner or an admin can manage members.");
+  }
+
+  const target = await db.groupMembership.findUnique({
+    where: { groupId_userId: { groupId, userId: targetUserId } },
+  });
+  if (!target) {
+    throw new NotFoundError(`No member found with id "${targetUserId}" in this group.`);
+  }
+  if (target.role !== GroupRole.MEMBER) {
+    return; // Already ADMIN or OWNER — nothing to do.
+  }
+
+  await db.groupMembership.update({
+    where: { groupId_userId: { groupId, userId: targetUserId } },
+    data: { role: GroupRole.ADMIN },
+  });
+}
+
+/**
+ * Demotes an ADMIN back to MEMBER. Callable by the group's OWNER or an
+ * existing ADMIN. The OWNER can never be demoted — that's a `ValidationError`,
+ * not silently ignored, since it signals a caller bug (or tampering) rather
+ * than a harmless race. Idempotent for a target that's already a MEMBER.
+ */
+export async function demoteAdminToMember(
+  groupId: string,
+  actingUserId: string,
+  targetUserId: string,
+): Promise<void> {
+  const group = await getGroupForAdmin(groupId, actingUserId);
+  if (!group) {
+    throw new ForbiddenError("Only the group owner or an admin can manage members.");
+  }
+
+  const target = await db.groupMembership.findUnique({
+    where: { groupId_userId: { groupId, userId: targetUserId } },
+  });
+  if (!target) {
+    throw new NotFoundError(`No member found with id "${targetUserId}" in this group.`);
+  }
+  if (target.role === GroupRole.OWNER) {
+    throw new ValidationError("The group owner can't be demoted.");
+  }
+  if (target.role === GroupRole.MEMBER) {
+    return; // Already a plain member — nothing to do.
+  }
+
+  await db.groupMembership.update({
+    where: { groupId_userId: { groupId, userId: targetUserId } },
+    data: { role: GroupRole.MEMBER },
+  });
+}
+
+/**
+ * Removes a member from the group entirely. Callable by the group's OWNER
+ * or an existing ADMIN. The OWNER can never be removed — a group always
+ * keeps its creator; deleting a group is a separate, unbuilt operation.
+ */
+export async function removeMember(
+  groupId: string,
+  actingUserId: string,
+  targetUserId: string,
+): Promise<void> {
+  const group = await getGroupForAdmin(groupId, actingUserId);
+  if (!group) {
+    throw new ForbiddenError("Only the group owner or an admin can manage members.");
+  }
+
+  const target = await db.groupMembership.findUnique({
+    where: { groupId_userId: { groupId, userId: targetUserId } },
+  });
+  if (!target) {
+    throw new NotFoundError(`No member found with id "${targetUserId}" in this group.`);
+  }
+  if (target.role === GroupRole.OWNER) {
+    throw new ValidationError("The group owner can't be removed.");
+  }
+
+  await db.groupMembership.delete({
+    where: { groupId_userId: { groupId, userId: targetUserId } },
+  });
+}
+
+/**
+ * Regenerates a group's invite token, immediately invalidating the old
+ * link (anyone still holding it gets a 404 via `getGroupByInviteToken`).
+ * Callable by the group's OWNER or an existing ADMIN.
+ */
+export async function regenerateInviteToken(groupId: string, actingUserId: string): Promise<Group> {
+  const group = await getGroupForAdmin(groupId, actingUserId);
+  if (!group) {
+    throw new ForbiddenError("Only the group owner or an admin can manage members.");
+  }
+
+  return db.group.update({
+    where: { id: groupId },
+    data: { inviteToken: generateInviteToken() },
+  });
 }
