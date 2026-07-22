@@ -1,0 +1,85 @@
+// Database provider is selected here — swap when deploying to Docker/Proxmox.
+// Local dev:  sqlite      + DATABASE_URL="file:./dev.db"
+// Production: postgresql  + DATABASE_URL="postgresql://..."
+//
+// All DateTime fields store UTC instants. Convert to/from the user's IANA
+// timezone (User.timezone) only at the application layer.
+//
+// When switching to postgresql, add `@db.Timestamptz` on DateTime fields for
+// native timezone-aware storage.
+
+generator client {
+  provider = "prisma-client"
+  output   = "./generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  /// bcrypt hash — never selected into API responses, only used by the
+  /// Credentials provider's authorize() to verify a login attempt.
+  passwordHash String
+  /// IANA timezone identifier used for display (e.g. America/Los_Angeles).
+  timezone  String   @default("UTC")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  availabilitySlots AvailabilitySlot[]
+  ownedGroups       Group[]
+  groupMemberships  GroupMembership[]
+}
+
+model AvailabilitySlot {
+id          String   @id @default(cuid())
+  userId      String
+  /// Null means "personal dashboard availability"; set means "this user's
+  /// availability inside that specific group" — same table, scoped by group.
+  groupId     String?
+  
+  /// Start of the free window, stored as a UTC instant.
+  startTime   DateTime @db.Timestamptz
+  
+  /// End of the free window, stored as a UTC instant.
+  endTime     DateTime @db.Timestamptz
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group Group? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startTime])
+  @@index([startTime, endTime])
+  @@index([groupId, startTime])
+}
+
+model Group {
+  id          String   @id @default(cuid())
+  name        String
+  ownerId     String
+  /// Opaque, unguessable join token — the invite link is `/groups/join/<inviteToken>`.
+  /// Never derived from `id`, so knowing a group's id doesn't let you join it.
+  inviteToken String   @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner             User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  memberships       GroupMembership[]
+  availabilitySlots AvailabilitySlot[]
+}
+
+model GroupMembership {
+  id       String   @id @default(cuid())
+  groupId  String
+  userId   String
+  joinedAt DateTime @default(now())
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Makes joining idempotent — joining twice just no-ops instead of erroring.
+  @@unique([groupId, userId])
+  @@index([userId])
+}

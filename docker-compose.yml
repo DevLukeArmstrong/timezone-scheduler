@@ -1,0 +1,27 @@
+# Database service for local testing or Proxmox deployment.
+# The Next.js app is not containerized yet — run it with npm run dev / start.
+#
+# Usage:
+#   docker compose up -d db
+#   Switch prisma/schema.prisma provider to "postgresql", then npm run db:migrate
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: scheduler
+      POSTGRES_PASSWORD: scheduler
+      POSTGRES_DB: timezone_scheduler
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scheduler -d timezone_scheduler"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
