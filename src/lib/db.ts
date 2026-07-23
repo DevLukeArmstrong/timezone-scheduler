@@ -16,12 +16,39 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-export const db =
-  globalForPrisma.prisma ?? new PrismaClient({ adapter: createAdapter() });
+function createPrismaClient(): PrismaClient {
+  return new PrismaClient({ adapter: createAdapter() });
+}
+
+/**
+ * Dev HMR keeps a PrismaClient on `globalThis` across module reloads. After
+ * `prisma generate` adds models, that cached instance can still be the old
+ * client (missing new delegates) and throw PrismaClientValidationError on
+ * includes like `recurrence`. Recreate when the cached client is stale.
+ */
+function getPrismaClient(): PrismaClient {
+  const existing = globalForPrisma.prisma;
+  if (
+    existing &&
+    typeof (existing as { recurrenceRule?: unknown }).recurrenceRule === "object"
+  ) {
+    return existing;
+  }
+  return createPrismaClient();
+}
+
+export const db = getPrismaClient();
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = db;
 }
 
-export type { User, AvailabilitySlot, Group, GroupMembership } from "../../prisma/generated/client";
+export type {
+  User,
+  AvailabilitySlot,
+  Group,
+  GroupMembership,
+  RecurrenceRule,
+  RecurrenceException,
+} from "../../prisma/generated/client";
 export { Prisma, GroupRole } from "../../prisma/generated/client";

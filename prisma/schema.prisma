@@ -35,7 +35,7 @@ model User {
 }
 
 model AvailabilitySlot {
-id          String   @id @default(cuid())
+  id          String   @id @default(cuid())
   userId      String
   /// Null means "personal dashboard availability"; set means "this user's
   /// availability inside that specific group" — same table, scoped by group.
@@ -45,20 +45,68 @@ id          String   @id @default(cuid())
   /// once. Null for slots created singly (or before batching existed). Lets
   /// the owner edit/delete every copy in the set together.
   batchId     String?
-  
+
   /// Start of the free window, stored as a UTC instant.
+  /// For recurring slots this is the first concrete occurrence (for indexing /
+  /// NOT NULL); expansion always reads {@link RecurrenceRule}.
   startTime   DateTime @db.Timestamptz
-  
+
   /// End of the free window, stored as a UTC instant.
   endTime     DateTime @db.Timestamptz
 
-  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  group Group? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user       User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group      Group?                @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  recurrence RecurrenceRule?
+  exceptions RecurrenceException[]
 
   @@index([userId, startTime])
   @@index([startTime, endTime])
   @@index([groupId, startTime])
   @@index([userId, batchId])
+}
+
+/// Rule stored once per recurring AvailabilitySlot. Concrete occurrences are
+/// expanded at query/render time for a bounded window — never materialized
+/// as unbounded rows.
+model RecurrenceRule {
+  id     String @id @default(cuid())
+  slotId String @unique
+
+  /// IANA zone the daily wall-clock times and calendar dates are interpreted in.
+  timeZone String
+
+  /// Minutes from local midnight for the daily window start (0–1439).
+  startMinute Int
+  /// Minutes from local midnight for the daily window end (0–1439).
+  /// When `endMinute < startMinute`, the window spans midnight into the next
+  /// local calendar day (e.g. 17:00–02:00).
+  endMinute Int
+
+  /// Bitmask of weekdays: bit 0 = Monday … bit 6 = Sunday.
+  /// Null means every day (still subject to the optional date range).
+  daysOfWeek Int?
+
+  /// Inclusive local calendar date bounds for the series. Null on either side
+  /// means unbounded in that direction. At least one of `daysOfWeek` or a
+  /// bounded range must be present at the application layer.
+  rangeStart DateTime? @db.Date
+  rangeEnd   DateTime? @db.Date
+
+  slot AvailabilitySlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+}
+
+/// A single local calendar date excluded from a recurring series ("delete
+/// this occurrence"). The date is the occurrence's start date in the rule's
+/// time zone.
+model RecurrenceException {
+  id     String   @id @default(cuid())
+  slotId String
+  date   DateTime @db.Date
+
+  slot AvailabilitySlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+
+  @@unique([slotId, date])
+  @@index([slotId])
 }
 
 model Group {

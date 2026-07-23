@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import {
   addCalendarAvailabilitySlotAction,
   type CalendarActionState,
@@ -15,6 +15,16 @@ const INPUT_CLASSNAME =
 
 const LABEL_CLASSNAME =
   "text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400";
+
+const WEEKDAYS = [
+  { value: "mon", label: "Mon" },
+  { value: "tue", label: "Tue" },
+  { value: "wed", label: "Wed" },
+  { value: "thu", label: "Thu" },
+  { value: "fri", label: "Fri" },
+  { value: "sat", label: "Sat" },
+  { value: "sun", label: "Sun" },
+] as const;
 
 function todayIso(): string {
   const now = new Date();
@@ -31,9 +41,9 @@ interface CalendarAvailabilityFormProps {
 }
 
 /**
- * Adds one wall-clock availability window to one or more of the user's
- * groups. Each selected group gets its own slot; successful copies share a
- * batch id so they can be removed together later.
+ * Adds one wall-clock availability window — one-off or recurring — to one or
+ * more of the user's groups. Each selected group gets its own slot; successful
+ * copies share a batch id so they can be removed together later.
  */
 export function CalendarAvailabilityForm({
   groups,
@@ -44,6 +54,7 @@ export function CalendarAvailabilityForm({
     addCalendarAvailabilitySlotAction,
     initialState,
   );
+  const [mode, setMode] = useState<"one-off" | "recurring">("one-off");
 
   if (groups.length === 0) {
     return (
@@ -102,59 +113,178 @@ export function CalendarAvailabilityForm({
         </p>
       </fieldset>
 
-      <div className="space-y-1.5">
-        <label htmlFor="date" className={LABEL_CLASSNAME}>
-          Start date
-        </label>
-        <input
-          type="date"
-          name="date"
-          id="date"
-          required
-          defaultValue={todayIso()}
-          className={INPUT_CLASSNAME}
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-2">
-        <div className="space-y-1.5">
-          <label htmlFor="startTime" className={LABEL_CLASSNAME}>
-            Start time
+      <fieldset className="space-y-1.5">
+        <legend className={LABEL_CLASSNAME}>Type</legend>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-zinc-200 px-2 py-2 text-sm dark:border-zinc-700">
+            <input
+              type="radio"
+              name="mode"
+              value="one-off"
+              checked={mode === "one-off"}
+              onChange={() => setMode("one-off")}
+            />
+            One-off
           </label>
-          <input
-            type="time"
-            name="startTime"
-            id="startTime"
-            required
-            defaultValue="09:00"
-            className={INPUT_CLASSNAME}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <label htmlFor="endTime" className={LABEL_CLASSNAME}>
-            End time
+          <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-zinc-200 px-2 py-2 text-sm dark:border-zinc-700">
+            <input
+              type="radio"
+              name="mode"
+              value="recurring"
+              checked={mode === "recurring"}
+              onChange={() => setMode("recurring")}
+            />
+            Recurring
           </label>
-          <input
-            type="time"
-            name="endTime"
-            id="endTime"
-            required
-            defaultValue="17:00"
-            className={INPUT_CLASSNAME}
-          />
         </div>
-      </div>
+      </fieldset>
 
-      <div className="space-y-1.5">
-        <label htmlFor="endDate" className={LABEL_CLASSNAME}>
-          End date
-        </label>
-        <input type="date" name="endDate" id="endDate" className={INPUT_CLASSNAME} />
-        <p className="text-xs text-zinc-400 dark:text-zinc-500">
-          Leave blank for a same-day slot. Pick a later date for a slot that
-          spans midnight (e.g. 5 PM–2 AM).
-        </p>
-      </div>
+      {mode === "one-off" ? (
+        <>
+          <div className="space-y-1.5">
+            <label htmlFor="date" className={LABEL_CLASSNAME}>
+              Start date
+            </label>
+            <input
+              type="date"
+              name="date"
+              id="date"
+              required
+              defaultValue={todayIso()}
+              className={INPUT_CLASSNAME}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1.5">
+              <label htmlFor="startTime" className={LABEL_CLASSNAME}>
+                Start time
+              </label>
+              <input
+                type="time"
+                name="startTime"
+                id="startTime"
+                required
+                defaultValue="09:00"
+                className={INPUT_CLASSNAME}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="endTime" className={LABEL_CLASSNAME}>
+                End time
+              </label>
+              <input
+                type="time"
+                name="endTime"
+                id="endTime"
+                required
+                defaultValue="17:00"
+                className={INPUT_CLASSNAME}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="endDate" className={LABEL_CLASSNAME}>
+              End date
+            </label>
+            <input type="date" name="endDate" id="endDate" className={INPUT_CLASSNAME} />
+            <p className="text-xs text-zinc-400 dark:text-zinc-500">
+              Leave blank for a same-day slot. Pick a later date for a slot that
+              spans midnight (e.g. 5 PM–2 AM).
+            </p>
+          </div>
+        </>
+      ) : (
+        <>
+          <fieldset className="space-y-1.5">
+            <legend className={LABEL_CLASSNAME}>Days of week</legend>
+            <div className="flex flex-wrap gap-1.5">
+              {WEEKDAYS.map((day) => (
+                <label
+                  key={day.value}
+                  className="flex cursor-pointer items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-xs dark:border-zinc-700"
+                >
+                  <input
+                    type="checkbox"
+                    name="daysOfWeek"
+                    value={day.value}
+                    defaultChecked={day.value !== "sat" && day.value !== "sun"}
+                    className="size-3 rounded border-zinc-300"
+                  />
+                  {day.label}
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-zinc-400 dark:text-zinc-500">
+              Optional if you set a date range. Leave unchecked for every day
+              in the range.
+            </p>
+          </fieldset>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1.5">
+              <label htmlFor="rangeStart" className={LABEL_CLASSNAME}>
+                Series start
+              </label>
+              <input
+                type="date"
+                name="rangeStart"
+                id="rangeStart"
+                className={INPUT_CLASSNAME}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="rangeEnd" className={LABEL_CLASSNAME}>
+                Series end
+              </label>
+              <input
+                type="date"
+                name="rangeEnd"
+                id="rangeEnd"
+                className={INPUT_CLASSNAME}
+              />
+            </div>
+          </div>
+          <p className="text-xs text-zinc-400 dark:text-zinc-500">
+            Optional if you pick days of week. Inclusive bounds; leave blank
+            for an open-ended series.
+          </p>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1.5">
+              <label htmlFor="startTimeRecurring" className={LABEL_CLASSNAME}>
+                Daily start
+              </label>
+              <input
+                type="time"
+                name="startTime"
+                id="startTimeRecurring"
+                required
+                defaultValue="09:00"
+                className={INPUT_CLASSNAME}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="endTimeRecurring" className={LABEL_CLASSNAME}>
+                Daily end
+              </label>
+              <input
+                type="time"
+                name="endTime"
+                id="endTimeRecurring"
+                required
+                defaultValue="17:00"
+                className={INPUT_CLASSNAME}
+              />
+            </div>
+          </div>
+          <p className="text-xs text-zinc-400 dark:text-zinc-500">
+            If end is earlier than start (e.g. 17:00–02:00), the window spans
+            midnight.
+          </p>
+        </>
+      )}
 
       <div className="space-y-1.5">
         <label htmlFor="timeZone" className={LABEL_CLASSNAME}>

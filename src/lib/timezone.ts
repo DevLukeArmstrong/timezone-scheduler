@@ -1,3 +1,4 @@
+import { addDays } from "date-fns";
 import { TZDate } from "@date-fns/tz";
 
 /**
@@ -115,4 +116,187 @@ export function wallClockToUtc(time: WallClockTime, timeZone: string): Date {
 export function utcToWallClock(instant: Date, timeZone: string): TZDate {
   assertValidTimeZone(timeZone);
   return TZDate.tz(timeZone, instant.getTime());
+}
+
+/** Calendar date parts (no time) in a given IANA zone. */
+export interface LocalDateParts {
+  year: number;
+  /** 1–12 */
+  month: number;
+  day: number;
+}
+
+/** Monday = 0 … Sunday = 6 — matches the calendar grid and recurrence bitmask. */
+export type WeekdayIndex = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+/**
+ * Local calendar Y/M/D for a UTC instant in `timeZone`. Prefer this over
+ * reading `Date#getUTC*` or host-local getters when the day boundary matters.
+ */
+export function getLocalDateParts(instant: Date, timeZone: string): LocalDateParts {
+  const local = utcToWallClock(instant, timeZone);
+  return {
+    year: local.getFullYear(),
+    month: local.getMonth() + 1,
+    day: local.getDate(),
+  };
+}
+
+/** Formats local date parts as `yyyy-MM-dd` (stable occurrence keys / form values). */
+export function formatLocalDateParts(parts: LocalDateParts): string {
+  return `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+}
+
+/** Parses a `yyyy-MM-dd` string into local date parts, or `null` if malformed. */
+export function parseLocalDateString(value: string): LocalDateParts | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (!isRealLocalDate({ year, month, day }, "UTC")) return null;
+  return { year, month, day };
+}
+
+/**
+ * True when `parts` names a real calendar day (rejects e.g. 2024-02-30 by
+ * round-tripping through {@link wallClockToUtc} in `timeZone`).
+ */
+export function isRealLocalDate(parts: LocalDateParts, timeZone: string): boolean {
+  try {
+    const instant = wallClockToUtc(
+      { ...parts, hour: 12, minute: 0 },
+      timeZone,
+    );
+    const roundTrip = getLocalDateParts(instant, timeZone);
+    return (
+      roundTrip.year === parts.year &&
+      roundTrip.month === parts.month &&
+      roundTrip.day === parts.day
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Weekday index for a local calendar date in `timeZone` (Mon = 0 … Sun = 6).
+ * Uses noon so DST spring-forward gaps cannot shift the civil day.
+ */
+export function getLocalWeekdayIndex(
+  parts: LocalDateParts,
+  timeZone: string,
+): WeekdayIndex {
+  const local = utcToWallClock(
+    wallClockToUtc({ ...parts, hour: 12, minute: 0 }, timeZone),
+    timeZone,
+  );
+  // JS: Sunday = 0 … Saturday = 6 → shift so Monday = 0.
+  return ((local.getDay() + 6) % 7) as WeekdayIndex;
+}
+
+/** Compare two local calendar dates: negative if a < b, 0 if equal, positive if a > b. */
+export function compareLocalDates(a: LocalDateParts, b: LocalDateParts): number {
+  if (a.year !== b.year) return a.year - b.year;
+  if (a.month !== b.month) return a.month - b.month;
+  return a.day - b.day;
+}
+
+/**
+ * Advances a local calendar date by `deltaDays` in `timeZone` using
+ * `date-fns`/`TZDate` day arithmetic (same approach as the week grid), so
+ * DST transitions do not skip or duplicate a civil day.
+ */
+export function addLocalDays(
+  parts: LocalDateParts,
+  deltaDays: number,
+  timeZone: string,
+): LocalDateParts {
+  const noon = utcToWallClock(
+    wallClockToUtc({ ...parts, hour: 12, minute: 0 }, timeZone),
+    timeZone,
+  );
+  const shifted = addDays(noon, deltaDays);
+  return getLocalDateParts(new Date(shifted.getTime()), timeZone);
+}
+
+/**
+ * Encodes a civil Y/M/D as a UTC-midnight `Date` for Prisma `@db.Date`
+ * columns. The time-of-day is not meaningful — only the calendar triple is.
+ */
+export function localDatePartsToDateOnly(parts: LocalDateParts): Date {
+  return new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+}
+
+/** Decodes a Prisma `@db.Date` value back to civil Y/M/D parts. */
+export function dateOnlyToLocalDateParts(date: Date): LocalDateParts {
+  return {
+    year: date.getUTCFullYear(),
+    month: date.getUTCMonth() + 1,
+    day: date.getUTCDate(),
+  };
+}
+
+/**
+ * Inclusive iterator over local calendar dates from `start` through `end`
+ * in `timeZone`. Yields nothing when `end` is before `start`.
+ */
+export function* iterateLocalDates(
+  start: LocalDateParts,
+  end: LocalDateParts,
+  timeZone: string,
+): Generator<LocalDateParts> {
+  if (compareLocalDates(start, end) > 0) return;
+  let cursor = start;
+  while (compareLocalDates(cursor, end) <= 0) {
+    yield cursor;
+    cursor = addLocalDays(cursor, 1, timeZone);
+  }
+}
+
+/** Minutes since local midnight (0–1439) for a UTC instant in `timeZone`. */
+export function getLocalMinutesSinceMidnight(
+  instant: Date,
+  timeZone: string,
+): number {
+  const local = utcToWallClock(instant, timeZone);
+  return local.getHours() * 60 + local.getMinutes();
+}
+
+/** Builds a UTC instant for `parts` at `minutes` past local midnight. */
+export function localDateAndMinutesToUtc(
+  parts: LocalDateParts,
+  minutes: number,
+  timeZone: string,
+): Date {
+  if (!Number.isInteger(minutes) || minutes < 0 || minutes >= 24 * 60) {
+    throw new RangeError(
+      `"minutes" must be an integer in [0, 1439]; got ${minutes}.`,
+    );
+  }
+  return wallClockToUtc(
+    {
+      ...parts,
+      hour: Math.floor(minutes / 60),
+      minute: minutes % 60,
+    },
+    timeZone,
+  );
+}
+
+/** Parses `HH:MM` into minutes since midnight, or `null` if malformed. */
+export function parseTimeToMinutes(value: string): number | null {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  return hour * 60 + minute;
+}
+
+/** Formats minutes since midnight as `HH:MM`. */
+export function formatMinutesAsTime(minutes: number): string {
+  const hour = Math.floor(minutes / 60);
+  const minute = minutes % 60;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }

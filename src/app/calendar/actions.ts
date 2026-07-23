@@ -5,10 +5,17 @@ import { auth } from "@/auth";
 import { getGroupForMember } from "@/lib/services/groups";
 import {
   createAvailabilitySlotFromLocalTime,
+  createRecurringAvailabilitySlot,
+  deleteAvailabilityOccurrence,
   deleteAvailabilitySlot,
   deleteAvailabilitySlotsByBatch,
 } from "@/lib/services/availability";
-import type { WallClockTime } from "@/lib/timezone";
+import { WEEKDAY_BITS } from "@/lib/recurrence";
+import {
+  parseLocalDateString,
+  parseTimeToMinutes,
+  type WallClockTime,
+} from "@/lib/timezone";
 import { ConflictError, ServiceError, ValidationError } from "@/lib/errors";
 
 export interface CalendarActionState {
@@ -17,12 +24,22 @@ export interface CalendarActionState {
 
 const NO_ERROR: CalendarActionState = {};
 
+const WEEKDAY_FORM_BITS: Record<string, number> = {
+  mon: WEEKDAY_BITS.mon,
+  tue: WEEKDAY_BITS.tue,
+  wed: WEEKDAY_BITS.wed,
+  thu: WEEKDAY_BITS.thu,
+  fri: WEEKDAY_BITS.fri,
+  sat: WEEKDAY_BITS.sat,
+  sun: WEEKDAY_BITS.sun,
+};
+
 /**
- * Adds the same wall-clock window to one or more of the current user's
- * groups. Each selected group gets its own AvailabilitySlot (overlap is
- * checked per group); successful copies share a new `batchId` so they can
- * later be deleted as a set. A conflict in one group does not block the
- * others — failures are reported by group name.
+ * Adds the same wall-clock window (one-off or recurring) to one or more of
+ * the current user's groups. Each selected group gets its own AvailabilitySlot
+ * (overlap is checked per group); successful copies share a new `batchId` so
+ * they can later be deleted as a set. A conflict in one group does not block
+ * the others — failures are reported by group name.
  */
 export async function addCalendarAvailabilitySlotAction(
   _prevState: CalendarActionState,
@@ -41,19 +58,8 @@ export async function addCalendarAvailabilitySlotAction(
     return { error: "Please choose at least one group for this availability." };
   }
 
-  const date = String(formData.get("date") ?? "");
-  const startTime = String(formData.get("startTime") ?? "");
-  const endTime = String(formData.get("endTime") ?? "");
-  // An empty end date means "same day as the start" — the common case.
-  // Picking a later end date is what lets a slot span midnight.
-  const endDate = String(formData.get("endDate") ?? "").trim() || date;
+  const mode = String(formData.get("mode") ?? "one-off").trim();
   const timeZone = String(formData.get("timeZone") ?? "").trim() || undefined;
-
-  const start = parseDateAndTime(date, startTime);
-  const end = parseDateAndTime(endDate, endTime);
-  if (!start || !end) {
-    return { error: "Please provide a valid date and start/end time." };
-  }
 
   // Authorization gate — never trust form `groupIds` alone; confirm
   // server-side membership before writing anything scoped to a group.
@@ -74,36 +80,86 @@ export async function addCalendarAvailabilitySlotAction(
   const created: string[] = [];
   const failed: string[] = [];
 
-  for (const group of authorized) {
-    try {
-      await createAvailabilitySlotFromLocalTime({
-        userId,
-        start,
-        end,
-        timeZone,
-        groupId: group.id,
-        batchId,
-      });
-      created.push(group.name);
-    } catch (error) {
-      // Window-shape errors apply to every group the same way — stop early
-      // (nothing was written for this group; earlier groups may have succeeded).
-      if (error instanceof ValidationError || error instanceof RangeError) {
-        if (created.length > 0) {
-          revalidatePath("/calendar");
+  if (mode === "recurring") {
+    const startMinute = parseTimeToMinutes(String(formData.get("startTime") ?? ""));
+    const endMinute = parseTimeToMinutes(String(formData.get("endTime") ?? ""));
+    if (startMinute == null || endMinute == null) {
+      return { error: "Please provide a valid daily start and end time." };
+    }
+
+    const daysOfWeek = parseDaysOfWeek(formData);
+    const rangeStartRaw = String(formData.get("rangeStart") ?? "").trim();
+    const rangeEndRaw = String(formData.get("rangeEnd") ?? "").trim();
+    const rangeStart = rangeStartRaw ? parseLocalDateString(rangeStartRaw) : null;
+    const rangeEnd = rangeEndRaw ? parseLocalDateString(rangeEndRaw) : null;
+    if (rangeStartRaw && !rangeStart) {
+      return { error: "Please provide a valid series start date." };
+    }
+    if (rangeEndRaw && !rangeEnd) {
+      return { error: "Please provide a valid series end date." };
+    }
+
+    const resolvedTimeZone = timeZone;
+    if (!resolvedTimeZone) {
+      return { error: "Please choose a time zone for the recurring rule." };
+    }
+
+    for (const group of authorized) {
+      try {
+        await createRecurringAvailabilitySlot({
+          userId,
+          groupId: group.id,
+          batchId,
+          rule: {
+            timeZone: resolvedTimeZone,
+            startMinute,
+            endMinute,
+            daysOfWeek,
+            rangeStart,
+            rangeEnd,
+          },
+        });
+        created.push(group.name);
+      } catch (error) {
+        const early = handleCreateError(error, group.name, created, failed);
+        if (early) {
+          if (created.length > 0) revalidatePath("/calendar");
+          return early;
         }
-        return { error: describeError(error) };
       }
-      if (error instanceof ConflictError) {
-        failed.push(`${group.name} (overlaps existing availability)`);
-        continue;
+    }
+  } else {
+    const date = String(formData.get("date") ?? "");
+    const startTime = String(formData.get("startTime") ?? "");
+    const endTime = String(formData.get("endTime") ?? "");
+    // An empty end date means "same day as the start" — the common case.
+    // Picking a later end date is what lets a slot span midnight.
+    const endDate = String(formData.get("endDate") ?? "").trim() || date;
+
+    const start = parseDateAndTime(date, startTime);
+    const end = parseDateAndTime(endDate, endTime);
+    if (!start || !end) {
+      return { error: "Please provide a valid date and start/end time." };
+    }
+
+    for (const group of authorized) {
+      try {
+        await createAvailabilitySlotFromLocalTime({
+          userId,
+          start,
+          end,
+          timeZone,
+          groupId: group.id,
+          batchId,
+        });
+        created.push(group.name);
+      } catch (error) {
+        const early = handleCreateError(error, group.name, created, failed);
+        if (early) {
+          if (created.length > 0) revalidatePath("/calendar");
+          return early;
+        }
       }
-      if (error instanceof ServiceError) {
-        failed.push(`${group.name} (${error.message})`);
-        continue;
-      }
-      console.error(error);
-      failed.push(`${group.name} (something went wrong)`);
     }
   }
 
@@ -128,11 +184,8 @@ export async function addCalendarAvailabilitySlotAction(
 }
 
 /**
- * Deletes one of the *current user's own* slots. `deleteAvailabilitySlot`
- * scopes the delete to `(slotId, userId)`, so this can never remove another
- * member's slot even if `slotId` is guessed or a request is forged
- * directly — which group the slot belongs to doesn't matter here, only
- * ownership does.
+ * Deletes one of the *current user's own* slots (one-off or entire recurring
+ * series). Scoped to `(slotId, userId)`.
  */
 export async function deleteCalendarAvailabilitySlotAction(slotId: string): Promise<void> {
   const session = await auth();
@@ -140,6 +193,22 @@ export async function deleteCalendarAvailabilitySlotAction(slotId: string): Prom
   if (!userId) return;
 
   await deleteAvailabilitySlot(userId, slotId);
+  revalidatePath("/calendar");
+}
+
+/**
+ * Deletes a single occurrence from a recurring series, or the whole one-off
+ * slot when the row is not recurring.
+ */
+export async function deleteCalendarAvailabilityOccurrenceAction(
+  slotId: string,
+  occurrenceDate: string,
+): Promise<void> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) return;
+
+  await deleteAvailabilityOccurrence(userId, slotId, occurrenceDate);
   revalidatePath("/calendar");
 }
 
@@ -156,6 +225,39 @@ export async function deleteCalendarAvailabilityBatchAction(
 
   await deleteAvailabilitySlotsByBatch(userId, batchId);
   revalidatePath("/calendar");
+}
+
+function parseDaysOfWeek(formData: FormData): number | null {
+  let mask = 0;
+  for (const value of formData.getAll("daysOfWeek")) {
+    const bit = WEEKDAY_FORM_BITS[String(value)];
+    if (bit) mask |= bit;
+  }
+  return mask === 0 ? null : mask;
+}
+
+function handleCreateError(
+  error: unknown,
+  groupName: string,
+  created: string[],
+  failed: string[],
+): CalendarActionState | null {
+  // Window-shape errors apply to every group the same way — stop early
+  // (nothing was written for this group; earlier groups may have succeeded).
+  if (error instanceof ValidationError || error instanceof RangeError) {
+    return { error: describeError(error) };
+  }
+  if (error instanceof ConflictError) {
+    failed.push(`${groupName} (overlaps existing availability)`);
+    return null;
+  }
+  if (error instanceof ServiceError) {
+    failed.push(`${groupName} (${error.message})`);
+    return null;
+  }
+  console.error(error);
+  failed.push(`${groupName} (something went wrong)`);
+  return null;
 }
 
 function uniqueNonEmpty(values: string[]): string[] {

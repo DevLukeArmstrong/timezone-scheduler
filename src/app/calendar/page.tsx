@@ -8,13 +8,17 @@ import {
   listGroupsForUser,
   type GroupMemberSummary,
 } from "@/lib/services/groups";
-import { listAvailabilitySlotsForGroups } from "@/lib/services/availability";
+import {
+  expandSlotsToOccurrences,
+  listAvailabilitySlotsForGroups,
+} from "@/lib/services/availability";
 import {
   formatWeekParam,
   getWeekDays,
   resolveGroupIdsParam,
   resolveWeekReference,
 } from "@/lib/calendar";
+import { addDays } from "date-fns";
 import type { Group } from "@/lib/db";
 import { AppHeader } from "@/components/app-header";
 import { CalendarAvailabilityForm } from "@/components/calendar-availability-form";
@@ -71,6 +75,12 @@ export default async function CalendarPage({
   const ownSlots = slots.filter((slot) => slot.user.id === user.id);
 
   const weekDays = getWeekDays(user.timezone, resolveWeekReference(week, user.timezone));
+  // Expand recurring rules only for the visible Mon–Sun window (exclusive end).
+  const weekWindow = {
+    start: new Date(weekDays[0].getTime()),
+    end: new Date(addDays(weekDays[6], 1).getTime()),
+  };
+  const occurrences = expandSlotsToOccurrences(slots, weekWindow);
   const weekLabel = new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
@@ -147,7 +157,7 @@ export default async function CalendarPage({
           )}
 
           <CalendarGrid
-            slots={slots}
+            occurrences={occurrences}
             members={members}
             timeZone={user.timezone}
             weekDays={weekDays}

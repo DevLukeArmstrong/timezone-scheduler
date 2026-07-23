@@ -1,7 +1,6 @@
 import { addDays, format, startOfWeek } from "date-fns";
 import { TZDate } from "@date-fns/tz";
-import type { AvailabilitySlot } from "@/lib/db";
-import type { GroupAvailabilitySlot } from "@/lib/services/availability";
+import type { AvailabilityOccurrence } from "@/lib/services/availability";
 import { assertValidTimeZone, utcToWallClock, wallClockToUtc } from "@/lib/timezone";
 
 /** The calendar grid always spans the full day; slots can start/end at any hour. */
@@ -107,60 +106,8 @@ export function withExtraQuery(href: string, extraQuery: string | undefined): st
   return `${href}${href.includes("?") ? "&" : "?"}${extraQuery}`;
 }
 
-export interface PositionedSlot {
-  slot: AvailabilitySlot;
-  dayIndex: number;
-  topPercent: number;
-  heightPercent: number;
-  label: string;
-}
-
-/**
- * Projects UTC-stored slots onto a 7-day grid in `timeZone`, clipped to the
- * `[GRID_START_HOUR, GRID_END_HOUR)` window each day. A slot that spans
- * midnight (or several days) contributes one entry per day it touches.
- */
-export function layoutSlotsForWeek(
-  slots: AvailabilitySlot[],
-  timeZone: string,
-  weekDays: Date[],
-): PositionedSlot[] {
-  const positioned: PositionedSlot[] = [];
-
-  for (const slot of slots) {
-    const localStart = utcToWallClock(slot.startTime, timeZone);
-    const localEnd = utcToWallClock(slot.endTime, timeZone);
-    const label = formatTimeRange(localStart, localEnd, timeZone);
-
-    weekDays.forEach((dayStart, dayIndex) => {
-      const dayEnd = addDays(dayStart, 1);
-      if (localStart >= dayEnd || localEnd <= dayStart) return;
-
-      const startHour = Math.max(
-        GRID_START_HOUR,
-        hoursSinceMidnight(localStart < dayStart ? dayStart : localStart, dayStart),
-      );
-      const endHour = Math.min(
-        GRID_END_HOUR,
-        hoursSinceMidnight(localEnd > dayEnd ? dayEnd : localEnd, dayStart),
-      );
-      if (endHour <= startHour) return;
-
-      positioned.push({
-        slot,
-        dayIndex,
-        topPercent: ((startHour - GRID_START_HOUR) / GRID_SPAN_HOURS) * 100,
-        heightPercent: ((endHour - startHour) / GRID_SPAN_HOURS) * 100,
-        label,
-      });
-    });
-  }
-
-  return positioned;
-}
-
 export interface PositionedGroupSlot {
-  slot: GroupAvailabilitySlot;
+  occurrence: AvailabilityOccurrence;
   dayIndex: number;
   topPercent: number;
   heightPercent: number;
@@ -172,22 +119,23 @@ export interface PositionedGroupSlot {
 }
 
 /**
- * Like `layoutSlotsForWeek`, but for many members' slots at once: slots
- * that overlap in time on the same day are placed in side-by-side lanes
- * (via greedy interval coloring) instead of stacking on top of each other,
- * so every member's availability stays visible and clickable.
+ * Projects concrete availability occurrences onto a 7-day grid in `timeZone`,
+ * clipped to the `[GRID_START_HOUR, GRID_END_HOUR)` window each day. A window
+ * that spans midnight (or several days) contributes one entry per day it
+ * touches. Occurrences that overlap in time on the same day are placed in
+ * side-by-side lanes (greedy interval coloring).
  */
 export function layoutGroupSlotsForWeek(
-  slots: GroupAvailabilitySlot[],
+  occurrences: AvailabilityOccurrence[],
   timeZone: string,
   weekDays: Date[],
 ): PositionedGroupSlot[] {
   type Clipped = Omit<PositionedGroupSlot, "lane" | "laneCount">;
   const clipped: Clipped[] = [];
 
-  for (const slot of slots) {
-    const localStart = utcToWallClock(slot.startTime, timeZone);
-    const localEnd = utcToWallClock(slot.endTime, timeZone);
+  for (const occurrence of occurrences) {
+    const localStart = utcToWallClock(occurrence.startTime, timeZone);
+    const localEnd = utcToWallClock(occurrence.endTime, timeZone);
     const label = formatTimeRange(localStart, localEnd, timeZone);
 
     weekDays.forEach((dayStart, dayIndex) => {
@@ -205,7 +153,7 @@ export function layoutGroupSlotsForWeek(
       if (endHour <= startHour) return;
 
       clipped.push({
-        slot,
+        occurrence,
         dayIndex,
         topPercent: ((startHour - GRID_START_HOUR) / GRID_SPAN_HOURS) * 100,
         heightPercent: ((endHour - startHour) / GRID_SPAN_HOURS) * 100,

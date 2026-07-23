@@ -1,13 +1,24 @@
 import { isSameDay } from "date-fns";
 import type { GroupAvailabilitySlot } from "@/lib/services/availability";
-import { utcToWallClock } from "@/lib/timezone";
+import {
+  dateOnlyToLocalDateParts,
+  formatLocalDateParts,
+  formatMinutesAsTime,
+  utcToWallClock,
+} from "@/lib/timezone";
 import {
   deleteCalendarAvailabilityBatchAction,
   deleteCalendarAvailabilitySlotAction,
 } from "@/app/calendar/actions";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 
-function formatSlot(slot: GroupAvailabilitySlot, timeZone: string, showGroupName: boolean): string {
+const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+
+function formatOneOff(
+  slot: GroupAvailabilitySlot,
+  timeZone: string,
+  showGroupName: boolean,
+): string {
   const start = utcToWallClock(slot.startTime, timeZone);
   const end = utcToWallClock(slot.endTime, timeZone);
   const dateFmt = new Intl.DateTimeFormat("en-US", {
@@ -24,11 +35,58 @@ function formatSlot(slot: GroupAvailabilitySlot, timeZone: string, showGroupName
 
   const range = isSameDay(start, end)
     ? `${dateFmt.format(start)} · ${timeFmt.format(start)} – ${timeFmt.format(end)}`
-    // A slot spanning midnight (or several days) — show both dates so it's
-    // clear the end time belongs to a different day.
     : `${dateFmt.format(start)} ${timeFmt.format(start)} → ${dateFmt.format(end)} ${timeFmt.format(end)}`;
 
   return showGroupName ? `${range} · ${slot.group.name}` : range;
+}
+
+function formatRecurring(
+  slot: GroupAvailabilitySlot,
+  showGroupName: boolean,
+): string {
+  const rule = slot.recurrence;
+  if (!rule) return formatOneOff(slot, "UTC", showGroupName);
+
+  const days =
+    rule.daysOfWeek == null
+      ? "Every day"
+      : WEEKDAY_LABELS.filter((_, index) => (rule.daysOfWeek! & (1 << index)) !== 0).join(
+          ", ",
+        );
+
+  const start = formatMinutesAsTime(rule.startMinute);
+  const end = formatMinutesAsTime(rule.endMinute);
+  const spansMidnight = rule.endMinute < rule.startMinute;
+  const time = spansMidnight ? `${start}–${end} (+1 day)` : `${start}–${end}`;
+
+  const rangeParts: string[] = [];
+  if (rule.rangeStart) {
+    rangeParts.push(formatLocalDateParts(dateOnlyToLocalDateParts(rule.rangeStart)));
+  }
+  if (rule.rangeEnd) {
+    rangeParts.push(formatLocalDateParts(dateOnlyToLocalDateParts(rule.rangeEnd)));
+  }
+  const range =
+    rangeParts.length === 0
+      ? "open-ended"
+      : rangeParts.length === 1
+        ? rule.rangeStart
+          ? `from ${rangeParts[0]}`
+          : `until ${rangeParts[0]}`
+        : `${rangeParts[0]}–${rangeParts[1]}`;
+
+  const summary = `↻ ${days} · ${time} · ${range}`;
+  return showGroupName ? `${summary} · ${slot.group.name}` : summary;
+}
+
+function formatSlot(
+  slot: GroupAvailabilitySlot,
+  timeZone: string,
+  showGroupName: boolean,
+): string {
+  return slot.recurrence
+    ? formatRecurring(slot, showGroupName)
+    : formatOneOff(slot, timeZone, showGroupName);
 }
 
 export function SlotList({
@@ -54,6 +112,7 @@ export function SlotList({
     <ul className="space-y-2">
       {slots.map((slot) => {
         const label = formatSlot(slot, timeZone, showGroupName);
+        const isRecurring = Boolean(slot.recurrence);
         return (
           <li
             key={slot.id}
@@ -70,14 +129,18 @@ export function SlotList({
                     title="Remove from all groups in this batch"
                     className="rounded-md px-1.5 py-0.5 text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
                   >
-                    all
+                    batch
                   </ConfirmSubmitButton>
                 </form>
               )}
               <form action={deleteCalendarAvailabilitySlotAction.bind(null, slot.id)}>
                 <ConfirmSubmitButton
-                  confirmMessage={`Remove this availability slot (${label})?`}
-                  title="Remove this slot"
+                  confirmMessage={
+                    isRecurring
+                      ? `Remove the entire recurring series (${label})?`
+                      : `Remove this availability slot (${label})?`
+                  }
+                  title={isRecurring ? "Remove entire series" : "Remove this slot"}
                   className="rounded-md px-1.5 py-0.5 text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
                 >
                   ✕

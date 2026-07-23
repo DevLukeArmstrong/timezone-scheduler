@@ -1,6 +1,22 @@
 import { db, Prisma, type AvailabilitySlot } from "@/lib/db";
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
-import { wallClockToUtc, type WallClockTime } from "@/lib/timezone";
+import {
+  assertValidRecurrenceRule,
+  expandRecurrenceRule,
+  firstOccurrenceFromRule,
+  type RecurrenceRuleInput,
+} from "@/lib/recurrence";
+import {
+  addLocalDays,
+  assertValidTimeZone,
+  getLocalDateParts,
+  localDateAndMinutesToUtc,
+  localDatePartsToDateOnly,
+  parseLocalDateString,
+  wallClockToUtc,
+  type LocalDateParts,
+  type WallClockTime,
+} from "@/lib/timezone";
 
 export interface CreateAvailabilitySlotInput {
   userId: string;
@@ -14,9 +30,9 @@ export interface CreateAvailabilitySlotInput {
 }
 
 /**
- * Saves a single availability slot for a user, storing both bounds as UTC
- * instants. Rejects zero/negative-length windows and windows that overlap an
- * existing slot for the same user *within the same scope* — personal
+ * Saves a single one-off availability slot for a user, storing both bounds as
+ * UTC instants. Rejects zero/negative-length windows and windows that overlap
+ * an existing slot for the same user *within the same scope* — personal
  * (`groupId` unset) and each group are independent, so a user can be "free"
  * generally but still have a separate, differently-shaped commitment inside
  * a specific group at the same time.
@@ -33,38 +49,8 @@ export async function createAvailabilitySlot(
     throw new ValidationError("endTime must be after startTime.");
   }
 
-  const user = await db.user.findUnique({
-    where: { id: input.userId },
-    select: { id: true },
-  });
-  if (!user) {
-    throw new NotFoundError(`No user found with id "${input.userId}".`);
-  }
-
-  if (groupId) {
-    const membership = await db.groupMembership.findUnique({
-      where: { groupId_userId: { groupId, userId: input.userId } },
-      select: { groupId: true },
-    });
-    if (!membership) {
-      throw new NotFoundError(`No group found with id "${groupId}" for this user.`);
-    }
-  }
-
-  const overlapping = await db.availabilitySlot.findFirst({
-    where: {
-      userId: input.userId,
-      groupId,
-      startTime: { lt: endTime },
-      endTime: { gt: startTime },
-    },
-    select: { id: true },
-  });
-  if (overlapping) {
-    throw new ConflictError(
-      "This availability slot overlaps with an existing one for this user.",
-    );
-  }
+  await assertUserAndGroup(input.userId, groupId);
+  await assertNoOverlap(input.userId, groupId, startTime, endTime);
 
   return db.availabilitySlot.create({
     data: { userId: input.userId, groupId, batchId, startTime, endTime },
@@ -103,6 +89,115 @@ export async function createAvailabilitySlotFromLocalTime(
   });
 }
 
+export interface CreateRecurringAvailabilitySlotInput {
+  userId: string;
+  rule: RecurrenceRuleInput;
+  groupId?: string;
+  batchId?: string | null;
+  /**
+   * Local calendar date used to find the first stored occurrence when the
+   * rule has no rangeStart (unbounded days-of-week series).
+   */
+  fromLocalDate?: LocalDateParts;
+}
+
+/**
+ * Saves a recurring availability rule. Concrete occurrences are expanded at
+ * query time — only the rule (+ a first-occurrence UTC window for NOT NULL
+ * columns) is persisted.
+ */
+export async function createRecurringAvailabilitySlot(
+  input: CreateRecurringAvailabilitySlotInput,
+): Promise<AvailabilitySlot> {
+  assertValidTimeZone(input.rule.timeZone);
+  try {
+    assertValidRecurrenceRule(input.rule);
+  } catch (error) {
+    throw new ValidationError(
+      error instanceof Error ? error.message : "Invalid recurrence rule.",
+    );
+  }
+
+  const groupId = input.groupId ?? null;
+  const batchId = input.batchId ?? null;
+  await assertUserAndGroup(input.userId, groupId);
+
+  const fromLocalDate =
+    input.fromLocalDate ??
+    input.rule.rangeStart ??
+    getLocalDateParts(new Date(), input.rule.timeZone);
+
+  const first = firstOccurrenceFromRule(input.rule, fromLocalDate);
+  if (!first) {
+    throw new ValidationError(
+      "This recurrence rule produces no occurrences — check days-of-week and date range.",
+    );
+  }
+
+  // Overlap against every expanded occurrence in a bounded search window:
+  // the explicit range when present, otherwise ~1 year from the first hit.
+  const overlapWindowStart = first.startTime;
+  const overlapWindowEnd = input.rule.rangeEnd
+    ? localDateAndMinutesToUtcExclusiveEnd(
+        input.rule.rangeEnd,
+        input.rule.timeZone,
+        input.rule.endMinute,
+        input.rule.startMinute,
+      )
+    : new Date(first.startTime.getTime() + 366 * 24 * 60 * 60 * 1000);
+
+  const candidates = expandRecurrenceRule(
+    {
+      timeZone: input.rule.timeZone,
+      startMinute: input.rule.startMinute,
+      endMinute: input.rule.endMinute,
+      daysOfWeek: input.rule.daysOfWeek ?? null,
+      rangeStart: input.rule.rangeStart
+        ? localDatePartsToDateOnly(input.rule.rangeStart)
+        : null,
+      rangeEnd: input.rule.rangeEnd
+        ? localDatePartsToDateOnly(input.rule.rangeEnd)
+        : null,
+    },
+    overlapWindowStart,
+    overlapWindowEnd,
+    [],
+  );
+
+  for (const occurrence of candidates) {
+    await assertNoOverlap(
+      input.userId,
+      groupId,
+      occurrence.startTime,
+      occurrence.endTime,
+    );
+  }
+
+  return db.availabilitySlot.create({
+    data: {
+      userId: input.userId,
+      groupId,
+      batchId,
+      startTime: first.startTime,
+      endTime: first.endTime,
+      recurrence: {
+        create: {
+          timeZone: input.rule.timeZone,
+          startMinute: input.rule.startMinute,
+          endMinute: input.rule.endMinute,
+          daysOfWeek: input.rule.daysOfWeek ?? null,
+          rangeStart: input.rule.rangeStart
+            ? localDatePartsToDateOnly(input.rule.rangeStart)
+            : null,
+          rangeEnd: input.rule.rangeEnd
+            ? localDatePartsToDateOnly(input.rule.rangeEnd)
+            : null,
+        },
+      },
+    },
+  });
+}
+
 const GROUP_SLOT_OWNER_SELECT = {
   id: true,
   name: true,
@@ -114,30 +209,56 @@ const GROUP_SLOT_GROUP_SELECT = {
   name: true,
 } as const;
 
+const SLOT_RECURRENCE_INCLUDE = {
+  recurrence: true,
+  exceptions: true,
+  user: { select: GROUP_SLOT_OWNER_SELECT },
+  group: { select: GROUP_SLOT_GROUP_SELECT },
+} as const;
+
 type GroupAvailabilitySlotRaw = Prisma.AvailabilitySlotGetPayload<{
-  include: {
-    user: { select: typeof GROUP_SLOT_OWNER_SELECT };
-    group: { select: typeof GROUP_SLOT_GROUP_SELECT };
-  };
+  include: typeof SLOT_RECURRENCE_INCLUDE;
 }>;
 
 /**
- * A slot annotated with both its owner and its (non-null) group — the shape
- * the group-aware calendar renders. The `group` field is always present
- * because every slot returned by `listAvailabilitySlotsForGroups` belongs
- * to one of the requested groups.
+ * A stored slot annotated with both its owner and its (non-null) group — the
+ * shape the group-aware calendar loads before expanding recurrence.
  */
 export type GroupAvailabilitySlot = Omit<GroupAvailabilitySlotRaw, "group"> & {
   group: NonNullable<GroupAvailabilitySlotRaw["group"]>;
 };
 
 /**
- * Lists every member's availability across one or more groups at once —
- * this is what powers the group-aware calendar's overlay view, whether
- * showing a single group or several side by side. Callers MUST have
+ * A concrete availability window ready for layout/render. One-offs map 1:1
+ * from a stored row; recurring rules contribute one entry per occurrence in
+ * the visible window.
+ */
+export interface AvailabilityOccurrence {
+  /** Stored AvailabilitySlot id (series id for recurring). */
+  slotId: string;
+  /** Stable key for React lists: slot id, or `slotId:yyyy-MM-dd` for occurrences. */
+  occurrenceKey: string;
+  /** Local start date of a recurring occurrence; null for one-offs. */
+  occurrenceDate: string | null;
+  startTime: Date;
+  endTime: Date;
+  batchId: string | null;
+  isRecurring: boolean;
+  user: GroupAvailabilitySlot["user"];
+  group: GroupAvailabilitySlot["group"];
+  /** Present when this occurrence came from a recurring series. */
+  recurrence: GroupAvailabilitySlot["recurrence"];
+}
+
+/**
+ * Lists every member's stored availability across one or more groups at once
+ * (one-off rows + recurring rules, not yet expanded). Callers MUST have
  * already verified the requester is a member of every id in `groupIds`
  * (see `groups.ts#getGroupForMember`); this function itself doesn't check.
  * Returns `[]` without querying when `groupIds` is empty.
+ *
+ * Pass the result through {@link expandSlotsToOccurrences} with a visible
+ * window before rendering the week grid.
  */
 export async function listAvailabilitySlotsForGroups(
   groupIds: string[],
@@ -147,17 +268,89 @@ export async function listAvailabilitySlotsForGroups(
   return db.availabilitySlot.findMany({
     where: { groupId: { in: groupIds } },
     orderBy: { startTime: "asc" },
-    include: {
-      user: { select: GROUP_SLOT_OWNER_SELECT },
-      group: { select: GROUP_SLOT_GROUP_SELECT },
-    },
+    include: SLOT_RECURRENCE_INCLUDE,
   }) as Promise<GroupAvailabilitySlot[]>;
 }
 
 /**
- * Deletes a slot, scoped to the owning user so one user can never delete
- * another's availability by guessing an id — this holds inside groups too,
- * since a group slot's `userId` is still the only thing checked here.
+ * Expands stored slots (one-off + recurring) into concrete occurrences.
+ * Recurring rules without a window yield a single summary occurrence from
+ * the stored first window so sidebar lists stay bounded.
+ */
+export function expandSlotsToOccurrences(
+  slots: GroupAvailabilitySlot[],
+  window?: { start: Date; end: Date },
+): AvailabilityOccurrence[] {
+  const occurrences: AvailabilityOccurrence[] = [];
+
+  for (const slot of slots) {
+    if (!slot.recurrence) {
+      if (
+        window &&
+        (slot.endTime <= window.start || slot.startTime >= window.end)
+      ) {
+        continue;
+      }
+      occurrences.push({
+        slotId: slot.id,
+        occurrenceKey: slot.id,
+        occurrenceDate: null,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        batchId: slot.batchId,
+        isRecurring: false,
+        user: slot.user,
+        group: slot.group,
+        recurrence: null,
+      });
+      continue;
+    }
+
+    if (!window) {
+      occurrences.push({
+        slotId: slot.id,
+        occurrenceKey: slot.id,
+        occurrenceDate: null,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        batchId: slot.batchId,
+        isRecurring: true,
+        user: slot.user,
+        group: slot.group,
+        recurrence: slot.recurrence,
+      });
+      continue;
+    }
+
+    const expanded = expandRecurrenceRule(
+      slot.recurrence,
+      window.start,
+      window.end,
+      slot.exceptions,
+    );
+    for (const occurrence of expanded) {
+      occurrences.push({
+        slotId: slot.id,
+        occurrenceKey: `${slot.id}:${occurrence.occurrenceDate}`,
+        occurrenceDate: occurrence.occurrenceDate,
+        startTime: occurrence.startTime,
+        endTime: occurrence.endTime,
+        batchId: slot.batchId,
+        isRecurring: true,
+        user: slot.user,
+        group: slot.group,
+        recurrence: slot.recurrence,
+      });
+    }
+  }
+
+  occurrences.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+  return occurrences;
+}
+
+/**
+ * Deletes a slot (one-off or entire recurring series), scoped to the owning
+ * user so one user can never delete another's availability by guessing an id.
  */
 export async function deleteAvailabilitySlot(
   userId: string,
@@ -171,6 +364,50 @@ export async function deleteAvailabilitySlot(
       `No availability slot found with id "${slotId}" for this user.`,
     );
   }
+}
+
+/**
+ * Excludes one occurrence from a recurring series ("delete this occurrence").
+ * For one-off slots, deletes the row instead.
+ */
+export async function deleteAvailabilityOccurrence(
+  userId: string,
+  slotId: string,
+  occurrenceDate: string,
+): Promise<void> {
+  const slot = await db.availabilitySlot.findFirst({
+    where: { id: slotId, userId },
+    include: { recurrence: true },
+  });
+  if (!slot) {
+    throw new NotFoundError(
+      `No availability slot found with id "${slotId}" for this user.`,
+    );
+  }
+
+  if (!slot.recurrence) {
+    await deleteAvailabilitySlot(userId, slotId);
+    return;
+  }
+
+  const parts = parseLocalDateString(occurrenceDate);
+  if (!parts) {
+    throw new ValidationError("occurrenceDate must be a valid yyyy-MM-dd date.");
+  }
+
+  await db.recurrenceException.upsert({
+    where: {
+      slotId_date: {
+        slotId,
+        date: localDatePartsToDateOnly(parts),
+      },
+    },
+    create: {
+      slotId,
+      date: localDatePartsToDateOnly(parts),
+    },
+    update: {},
+  });
 }
 
 /**
@@ -213,4 +450,82 @@ async function getUserTimeZoneOrThrow(userId: string): Promise<string> {
     throw new NotFoundError(`No user found with id "${userId}".`);
   }
   return user.timezone;
+}
+
+async function assertUserAndGroup(
+  userId: string,
+  groupId: string | null,
+): Promise<void> {
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { id: true },
+  });
+  if (!user) {
+    throw new NotFoundError(`No user found with id "${userId}".`);
+  }
+
+  if (groupId) {
+    const membership = await db.groupMembership.findUnique({
+      where: { groupId_userId: { groupId, userId } },
+      select: { groupId: true },
+    });
+    if (!membership) {
+      throw new NotFoundError(`No group found with id "${groupId}" for this user.`);
+    }
+  }
+}
+
+/**
+ * Rejects when `startTime`–`endTime` overlaps any existing one-off slot or any
+ * expanded recurring occurrence for the same user + group scope.
+ */
+async function assertNoOverlap(
+  userId: string,
+  groupId: string | null,
+  startTime: Date,
+  endTime: Date,
+): Promise<void> {
+  const existing = await db.availabilitySlot.findMany({
+    where: { userId, groupId },
+    include: { recurrence: true, exceptions: true },
+  });
+
+  for (const slot of existing) {
+    if (!slot.recurrence) {
+      if (slot.startTime < endTime && slot.endTime > startTime) {
+        throw new ConflictError(
+          "This availability slot overlaps with an existing one for this user.",
+        );
+      }
+      continue;
+    }
+
+    const expanded = expandRecurrenceRule(
+      slot.recurrence,
+      startTime,
+      endTime,
+      slot.exceptions,
+    );
+    if (expanded.length > 0) {
+      throw new ConflictError(
+        "This availability slot overlaps with an existing one for this user.",
+      );
+    }
+  }
+}
+
+/**
+ * End instant of the last possible occurrence on `rangeEnd` (accounts for
+ * midnight-spanning daily windows). Used as an exclusive expansion bound
+ * together with interval overlap checks (`start < end && end > start`).
+ */
+function localDateAndMinutesToUtcExclusiveEnd(
+  rangeEnd: LocalDateParts,
+  timeZone: string,
+  endMinute: number,
+  startMinute: number,
+): Date {
+  const spansMidnight = endMinute < startMinute;
+  const endDay = spansMidnight ? addLocalDays(rangeEnd, 1, timeZone) : rangeEnd;
+  return localDateAndMinutesToUtc(endDay, endMinute, timeZone);
 }

@@ -1,5 +1,5 @@
 import { isSameDay } from "date-fns";
-import type { GroupAvailabilitySlot } from "@/lib/services/availability";
+import type { AvailabilityOccurrence } from "@/lib/services/availability";
 import {
   DEFAULT_SCROLL_HOUR,
   GRID_END_HOUR,
@@ -9,8 +9,7 @@ import {
 } from "@/lib/calendar";
 import { utcToWallClock } from "@/lib/timezone";
 import { getMemberColor } from "@/lib/member-colors";
-import { deleteCalendarAvailabilitySlotAction } from "@/app/calendar/actions";
-import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
+import { OwnOccurrenceActions } from "@/components/own-occurrence-actions";
 import { CalendarScrollContainer } from "@/components/calendar-scroll-container";
 
 const HOURS = Array.from(
@@ -34,8 +33,8 @@ export interface CalendarLegendMember {
 }
 
 interface CalendarGridProps {
-  /** Slots from every currently-selected group, each carrying its own owner + group. */
-  slots: GroupAvailabilitySlot[];
+  /** Concrete occurrences (one-offs + expanded recurring) for the visible week. */
+  occurrences: AvailabilityOccurrence[];
   /** Every distinct member across the currently-selected groups, for the color legend. */
   members: CalendarLegendMember[];
   timeZone: string;
@@ -48,19 +47,18 @@ interface CalendarGridProps {
 /**
  * The group-aware calendar grid: renders every selected group's members'
  * availability overlaid on one 7-day view, side-by-side in lanes where
- * times overlap. Replaces the old single-group `GroupCalendar` — a slot's
- * `group` field is what disambiguates ownership when several groups are
- * shown at once.
+ * times overlap. Recurring rules are expanded into concrete occurrences
+ * before layout.
  */
 export function CalendarGrid({
-  slots,
+  occurrences,
   members,
   timeZone,
   weekDays,
   viewerId,
   showGroupNames,
 }: CalendarGridProps) {
-  const positioned = layoutGroupSlotsForWeek(slots, timeZone, weekDays);
+  const positioned = layoutGroupSlotsForWeek(occurrences, timeZone, weekDays);
   const today = utcToWallClock(new Date(), timeZone);
   const gridHeight = `${HOURS.length * ROW_HEIGHT_REM}rem`;
   const memberIndexById = new Map(members.map((member, index) => [member.id, index]));
@@ -130,11 +128,13 @@ export function CalendarGrid({
                 {positioned
                   .filter((p) => p.dayIndex === dayIndex)
                   .map((p) => {
-                    const memberIndex = memberIndexById.get(p.slot.user.id) ?? 0;
+                    const memberIndex = memberIndexById.get(p.occurrence.user.id) ?? 0;
                     const color = getMemberColor(memberIndex);
-                    const isOwn = p.slot.user.id === viewerId;
-                    const ownerName = p.slot.user.name ?? p.slot.user.email;
-                    const label = showGroupNames ? `${p.label} · ${p.slot.group.name}` : p.label;
+                    const isOwn = p.occurrence.user.id === viewerId;
+                    const ownerName = p.occurrence.user.name ?? p.occurrence.user.email;
+                    const label = showGroupNames
+                      ? `${p.label} · ${p.occurrence.group.name}`
+                      : p.label;
                     const leftPercent = (p.lane / p.laneCount) * 100;
                     const style = {
                       top: `${p.topPercent}%`,
@@ -145,35 +145,33 @@ export function CalendarGrid({
 
                     if (isOwn) {
                       return (
-                        <form
-                          key={`${p.slot.id}-${dayIndex}`}
-                          action={deleteCalendarAvailabilitySlotAction.bind(null, p.slot.id)}
-                          className={`group absolute overflow-hidden rounded-md border ${color.border} ${color.bg}`}
+                        <OwnOccurrenceActions
+                          key={`${p.occurrence.occurrenceKey}-${dayIndex}`}
+                          slotId={p.occurrence.slotId}
+                          occurrenceDate={p.occurrence.occurrenceDate}
+                          isRecurring={p.occurrence.isRecurring}
+                          label={label}
                           style={style}
+                          className={`group absolute overflow-hidden rounded-md border ${color.border} ${color.bg} ${color.text}`}
                         >
-                          <ConfirmSubmitButton
-                            confirmMessage={`Remove this availability slot (${label})?`}
-                            title="Remove this slot"
-                            className={`absolute inset-0 flex h-full w-full flex-col items-start justify-start p-1 text-left ${color.text}`}
-                          >
-                            <span className="truncate text-[10px] font-semibold">
-                              You
-                            </span>
-                            <span className="truncate text-[10px]">{label}</span>
-                          </ConfirmSubmitButton>
-                        </form>
+                          <span className="truncate text-[10px] font-semibold">
+                            You{p.occurrence.isRecurring ? " · ↻" : ""}
+                          </span>
+                          <span className="truncate text-[10px]">{label}</span>
+                        </OwnOccurrenceActions>
                       );
                     }
 
                     return (
                       <div
-                        key={`${p.slot.id}-${dayIndex}`}
+                        key={`${p.occurrence.occurrenceKey}-${dayIndex}`}
                         title={`${ownerName}: ${label}`}
                         style={style}
                         className={`absolute overflow-hidden rounded-md border p-1 text-left ${color.border} ${color.bg} ${color.text}`}
                       >
                         <span className="block truncate text-[10px] font-semibold">
                           {ownerName}
+                          {p.occurrence.isRecurring ? " · ↻" : ""}
                         </span>
                         <span className="block truncate text-[10px]">{label}</span>
                       </div>
@@ -198,7 +196,8 @@ export function CalendarGrid({
       </div>
       <p className="text-xs text-zinc-400 dark:text-zinc-500">
         You can only add, edit, or remove your own slots — everyone else&apos;s
-        availability here is read-only.
+        availability here is read-only. For recurring blocks, click to remove
+        one occurrence, or use &quot;all&quot; to remove the whole series.
       </p>
     </div>
   );
