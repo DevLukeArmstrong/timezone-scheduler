@@ -40,6 +40,11 @@ id          String   @id @default(cuid())
   /// Null means "personal dashboard availability"; set means "this user's
   /// availability inside that specific group" — same table, scoped by group.
   groupId     String?
+
+  /// Shared id when one wall-clock window is copied into multiple groups at
+  /// once. Null for slots created singly (or before batching existed). Lets
+  /// the owner edit/delete every copy in the set together.
+  batchId     String?
   
   /// Start of the free window, stored as a UTC instant.
   startTime   DateTime @db.Timestamptz
@@ -53,6 +58,7 @@ id          String   @id @default(cuid())
   @@index([userId, startTime])
   @@index([startTime, endTime])
   @@index([groupId, startTime])
+  @@index([userId, batchId])
 }
 
 model Group {

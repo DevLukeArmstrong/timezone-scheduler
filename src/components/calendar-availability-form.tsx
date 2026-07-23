@@ -25,18 +25,19 @@ function todayIso(): string {
 
 interface CalendarAvailabilityFormProps {
   groups: { id: string; name: string }[];
-  defaultGroupId?: string;
+  /** Groups pre-checked in the multi-select (typically the calendar filter). */
+  defaultGroupIds?: string[];
   defaultTimeZone: string;
 }
 
 /**
- * Adds an availability slot to one of the user's groups. Every slot on the
- * unified calendar belongs to exactly one group (no more "personal, no
- * group" availability), so this form always includes a group picker.
+ * Adds one wall-clock availability window to one or more of the user's
+ * groups. Each selected group gets its own slot; successful copies share a
+ * batch id so they can be removed together later.
  */
 export function CalendarAvailabilityForm({
   groups,
-  defaultGroupId,
+  defaultGroupIds,
   defaultTimeZone,
 }: CalendarAvailabilityFormProps) {
   const [state, formAction, pending] = useActionState(
@@ -62,6 +63,11 @@ export function CalendarAvailabilityForm({
     );
   }
 
+  const checkedIds =
+    defaultGroupIds && defaultGroupIds.length > 0
+      ? new Set(defaultGroupIds)
+      : new Set(groups.map((group) => group.id));
+
   return (
     <form
       action={formAction}
@@ -71,24 +77,30 @@ export function CalendarAvailabilityForm({
         Add availability
       </h2>
 
-      <div className="space-y-1.5">
-        <label htmlFor="groupId" className={LABEL_CLASSNAME}>
-          Group
-        </label>
-        <select
-          name="groupId"
-          id="groupId"
-          required
-          defaultValue={defaultGroupId ?? groups[0]?.id}
-          className={INPUT_CLASSNAME}
-        >
+      <fieldset className="space-y-1.5">
+        <legend className={LABEL_CLASSNAME}>Groups</legend>
+        <div className="max-h-40 space-y-1.5 overflow-y-auto rounded-lg border border-zinc-200 p-2 dark:border-zinc-800">
           {groups.map((group) => (
-            <option key={group.id} value={group.id}>
-              {group.name}
-            </option>
+            <label
+              key={group.id}
+              className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm text-zinc-800 hover:bg-zinc-50 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
+            >
+              <input
+                type="checkbox"
+                name="groupIds"
+                value={group.id}
+                defaultChecked={checkedIds.has(group.id)}
+                className="size-3.5 shrink-0 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-500 dark:border-zinc-600 dark:bg-zinc-900"
+              />
+              <span className="truncate">{group.name}</span>
+            </label>
           ))}
-        </select>
-      </div>
+        </div>
+        <p className="text-xs text-zinc-400 dark:text-zinc-500">
+          One window is copied into each selected group. Overlaps are checked
+          per group.
+        </p>
+      </fieldset>
 
       <div className="space-y-1.5">
         <label htmlFor="date" className={LABEL_CLASSNAME}>

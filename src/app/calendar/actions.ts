@@ -6,9 +6,10 @@ import { getGroupForMember } from "@/lib/services/groups";
 import {
   createAvailabilitySlotFromLocalTime,
   deleteAvailabilitySlot,
+  deleteAvailabilitySlotsByBatch,
 } from "@/lib/services/availability";
 import type { WallClockTime } from "@/lib/timezone";
-import { ServiceError } from "@/lib/errors";
+import { ConflictError, ServiceError, ValidationError } from "@/lib/errors";
 
 export interface CalendarActionState {
   error?: string;
@@ -17,11 +18,11 @@ export interface CalendarActionState {
 const NO_ERROR: CalendarActionState = {};
 
 /**
- * Adds a slot to one of the current user's groups. Every slot on the
- * group-aware calendar belongs to exactly one group — there's no
- * "personal, no group" availability anymore — so `groupId` is required and
- * always re-validated server-side via `getGroupForMember`, never trusted
- * from the submitted form alone.
+ * Adds the same wall-clock window to one or more of the current user's
+ * groups. Each selected group gets its own AvailabilitySlot (overlap is
+ * checked per group); successful copies share a new `batchId` so they can
+ * later be deleted as a set. A conflict in one group does not block the
+ * others — failures are reported by group name.
  */
 export async function addCalendarAvailabilitySlotAction(
   _prevState: CalendarActionState,
@@ -33,17 +34,11 @@ export async function addCalendarAvailabilitySlotAction(
     return { error: "Please sign in before adding availability." };
   }
 
-  const groupId = String(formData.get("groupId") ?? "").trim();
-  if (!groupId) {
-    return { error: "Please choose a group for this availability." };
-  }
-
-  // Authorization gate — never trust `groupId` (a hidden/selected form
-  // value) alone; confirm server-side that this user is actually a member
-  // before writing anything scoped to the group.
-  const group = await getGroupForMember(groupId, userId);
-  if (!group) {
-    return { error: "You are not a member of that group." };
+  const groupIds = uniqueNonEmpty(
+    formData.getAll("groupIds").map((value) => String(value)),
+  );
+  if (groupIds.length === 0) {
+    return { error: "Please choose at least one group for this availability." };
   }
 
   const date = String(formData.get("date") ?? "");
@@ -60,13 +55,75 @@ export async function addCalendarAvailabilitySlotAction(
     return { error: "Please provide a valid date and start/end time." };
   }
 
-  try {
-    await createAvailabilitySlotFromLocalTime({ userId, start, end, timeZone, groupId });
-  } catch (error) {
-    return { error: describeError(error) };
+  // Authorization gate — never trust form `groupIds` alone; confirm
+  // server-side membership before writing anything scoped to a group.
+  const authorized = (
+    await Promise.all(
+      groupIds.map(async (groupId) => {
+        const group = await getGroupForMember(groupId, userId);
+        return group ? { id: group.id, name: group.name } : null;
+      }),
+    )
+  ).filter((group): group is { id: string; name: string } => group !== null);
+
+  if (authorized.length === 0) {
+    return { error: "You are not a member of any of the selected groups." };
   }
 
-  revalidatePath("/calendar");
+  const batchId = crypto.randomUUID();
+  const created: string[] = [];
+  const failed: string[] = [];
+
+  for (const group of authorized) {
+    try {
+      await createAvailabilitySlotFromLocalTime({
+        userId,
+        start,
+        end,
+        timeZone,
+        groupId: group.id,
+        batchId,
+      });
+      created.push(group.name);
+    } catch (error) {
+      // Window-shape errors apply to every group the same way — stop early
+      // (nothing was written for this group; earlier groups may have succeeded).
+      if (error instanceof ValidationError || error instanceof RangeError) {
+        if (created.length > 0) {
+          revalidatePath("/calendar");
+        }
+        return { error: describeError(error) };
+      }
+      if (error instanceof ConflictError) {
+        failed.push(`${group.name} (overlaps existing availability)`);
+        continue;
+      }
+      if (error instanceof ServiceError) {
+        failed.push(`${group.name} (${error.message})`);
+        continue;
+      }
+      console.error(error);
+      failed.push(`${group.name} (something went wrong)`);
+    }
+  }
+
+  if (created.length > 0) {
+    revalidatePath("/calendar");
+  }
+
+  if (failed.length > 0) {
+    const parts: string[] = [];
+    if (created.length > 0) {
+      parts.push(`Added to ${joinNames(created)}.`);
+    }
+    parts.push(`Couldn't add to ${joinNames(failed)}.`);
+    return { error: parts.join(" ") };
+  }
+
+  if (created.length === 0) {
+    return { error: "Couldn't add availability to any of the selected groups." };
+  }
+
   return NO_ERROR;
 }
 
@@ -84,6 +141,39 @@ export async function deleteCalendarAvailabilitySlotAction(slotId: string): Prom
 
   await deleteAvailabilitySlot(userId, slotId);
   revalidatePath("/calendar");
+}
+
+/**
+ * Deletes every copy the current user owns in a multi-group batch. Scoped to
+ * `(batchId, userId)` so other members' availability is never affected.
+ */
+export async function deleteCalendarAvailabilityBatchAction(
+  batchId: string,
+): Promise<void> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) return;
+
+  await deleteAvailabilitySlotsByBatch(userId, batchId);
+  revalidatePath("/calendar");
+}
+
+function uniqueNonEmpty(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+  return result;
+}
+
+function joinNames(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
 }
 
 function parseDateAndTime(date: string, time: string): WallClockTime | null {

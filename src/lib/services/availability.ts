@@ -9,6 +9,8 @@ export interface CreateAvailabilitySlotInput {
   endTime: Date | string;
   /** When set, this slot belongs to that group instead of the user's personal dashboard. */
   groupId?: string;
+  /** Shared across copies of the same window added to multiple groups at once. */
+  batchId?: string | null;
 }
 
 /**
@@ -25,6 +27,7 @@ export async function createAvailabilitySlot(
   const startTime = toUtcDate(input.startTime, "startTime");
   const endTime = toUtcDate(input.endTime, "endTime");
   const groupId = input.groupId ?? null;
+  const batchId = input.batchId ?? null;
 
   if (endTime <= startTime) {
     throw new ValidationError("endTime must be after startTime.");
@@ -64,7 +67,7 @@ export async function createAvailabilitySlot(
   }
 
   return db.availabilitySlot.create({
-    data: { userId: input.userId, groupId, startTime, endTime },
+    data: { userId: input.userId, groupId, batchId, startTime, endTime },
   });
 }
 
@@ -76,6 +79,8 @@ export interface CreateAvailabilitySlotFromLocalTimeInput {
   timeZone?: string;
   /** When set, this slot belongs to that group instead of the user's personal dashboard. */
   groupId?: string;
+  /** Shared across copies of the same window added to multiple groups at once. */
+  batchId?: string | null;
 }
 
 /**
@@ -92,6 +97,7 @@ export async function createAvailabilitySlotFromLocalTime(
   return createAvailabilitySlot({
     userId: input.userId,
     groupId: input.groupId,
+    batchId: input.batchId,
     startTime: wallClockToUtc(input.start, timeZone),
     endTime: wallClockToUtc(input.end, timeZone),
   });
@@ -163,6 +169,29 @@ export async function deleteAvailabilitySlot(
   if (count === 0) {
     throw new NotFoundError(
       `No availability slot found with id "${slotId}" for this user.`,
+    );
+  }
+}
+
+/**
+ * Deletes every copy the owning user created in one multi-group batch.
+ * Other members' slots are never touched — the filter is always
+ * `(batchId, userId)`, not batch alone.
+ */
+export async function deleteAvailabilitySlotsByBatch(
+  userId: string,
+  batchId: string,
+): Promise<void> {
+  if (!batchId) {
+    throw new ValidationError("batchId is required.");
+  }
+
+  const { count } = await db.availabilitySlot.deleteMany({
+    where: { batchId, userId },
+  });
+  if (count === 0) {
+    throw new NotFoundError(
+      `No availability slots found for batch "${batchId}" for this user.`,
     );
   }
 }

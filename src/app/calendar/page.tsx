@@ -93,7 +93,9 @@ export default async function CalendarPage({
         <aside className="hidden w-64 shrink-0 flex-col gap-4 lg:flex">
           <CalendarAvailabilityForm
             groups={allGroups}
-            defaultGroupId={selectedIds[0]}
+            defaultGroupIds={
+              selectedIds.length > 0 ? selectedIds : allGroups.map((group) => group.id)
+            }
             defaultTimeZone={user.timezone}
           />
 

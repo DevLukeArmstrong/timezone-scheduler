@@ -1,7 +1,10 @@
 import { isSameDay } from "date-fns";
 import type { GroupAvailabilitySlot } from "@/lib/services/availability";
 import { utcToWallClock } from "@/lib/timezone";
-import { deleteCalendarAvailabilitySlotAction } from "@/app/calendar/actions";
+import {
+  deleteCalendarAvailabilityBatchAction,
+  deleteCalendarAvailabilitySlotAction,
+} from "@/app/calendar/actions";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 
 function formatSlot(slot: GroupAvailabilitySlot, timeZone: string, showGroupName: boolean): string {
@@ -57,15 +60,30 @@ export function SlotList({
             className="flex items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300"
           >
             <span>{label}</span>
-            <form action={deleteCalendarAvailabilitySlotAction.bind(null, slot.id)}>
-              <ConfirmSubmitButton
-                confirmMessage={`Remove this availability slot (${label})?`}
-                title="Remove this slot"
-                className="shrink-0 rounded-md px-1.5 py-0.5 text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
-              >
-                ✕
-              </ConfirmSubmitButton>
-            </form>
+            <div className="flex shrink-0 items-center gap-1">
+              {slot.batchId && (
+                <form
+                  action={deleteCalendarAvailabilityBatchAction.bind(null, slot.batchId)}
+                >
+                  <ConfirmSubmitButton
+                    confirmMessage={`Remove this availability from every group it was added to (${label})?`}
+                    title="Remove from all groups in this batch"
+                    className="rounded-md px-1.5 py-0.5 text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+                  >
+                    all
+                  </ConfirmSubmitButton>
+                </form>
+              )}
+              <form action={deleteCalendarAvailabilitySlotAction.bind(null, slot.id)}>
+                <ConfirmSubmitButton
+                  confirmMessage={`Remove this availability slot (${label})?`}
+                  title="Remove this slot"
+                  className="rounded-md px-1.5 py-0.5 text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+                >
+                  ✕
+                </ConfirmSubmitButton>
+              </form>
+            </div>
           </li>
         );
       })}
