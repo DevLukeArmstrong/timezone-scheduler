@@ -13,19 +13,30 @@ import {
   listAvailabilitySlotsForGroups,
 } from "@/lib/services/availability";
 import {
-  formatWeekParam,
+  MONTH_LABELS,
+  getMonthDays,
+  getViewWindow,
   getWeekDays,
+  getYearMonths,
+  resolveCalendarView,
+  resolveDateReference,
   resolveGroupIdsParam,
-  resolveWeekReference,
 } from "@/lib/calendar";
-import { addDays } from "date-fns";
+import {
+  formatLocalDateParts,
+  getLocalDateParts,
+  utcToWallClock,
+} from "@/lib/timezone";
 import type { Group } from "@/lib/db";
 import { AppHeader } from "@/components/app-header";
 import { CalendarAvailabilityForm } from "@/components/calendar-availability-form";
 import { CalendarGrid, type CalendarLegendMember } from "@/components/calendar-grid";
+import { CalendarMonthGrid } from "@/components/calendar-month-grid";
+import { CalendarNav } from "@/components/calendar-nav";
+import { CalendarViewSwitcher } from "@/components/calendar-view-switcher";
+import { CalendarYearGrid } from "@/components/calendar-year-grid";
 import { GroupFilter } from "@/components/group-filter";
 import { SlotList } from "@/components/slot-list";
-import { WeekNav } from "@/components/week-nav";
 
 function dedupeMembers(members: GroupMemberSummary[]): CalendarLegendMember[] {
   const seen = new Map<string, CalendarLegendMember>();
@@ -37,10 +48,21 @@ function dedupeMembers(members: GroupMemberSummary[]): CalendarLegendMember[] {
   return [...seen.values()];
 }
 
+function joinQueryParts(parts: Array<string | undefined>): string | undefined {
+  const filtered = parts.filter((part): part is string => Boolean(part));
+  return filtered.length > 0 ? filtered.join("&") : undefined;
+}
+
 export default async function CalendarPage({
   searchParams,
 }: {
-  searchParams: Promise<{ week?: string; groups?: string }>;
+  searchParams: Promise<{
+    view?: string;
+    date?: string;
+    /** @deprecated Prefer `date`; still accepted for existing bookmarks. */
+    week?: string;
+    groups?: string;
+  }>;
 }) {
   // `proxy.ts` already gates this route, but Server Components should never
   // rely on that alone — see node_modules/next/dist/docs/.../guides/authentication.md.
@@ -50,7 +72,16 @@ export default async function CalendarPage({
     redirect("/login");
   }
 
-  const { week, groups: groupsParam } = await searchParams;
+  const {
+    view: viewParam,
+    date: dateParam,
+    week: weekParam,
+    groups: groupsParam,
+  } = await searchParams;
+
+  const view = resolveCalendarView(viewParam);
+  // Prefer `date`; fall back to legacy `week=` so old links keep working.
+  const reference = resolveDateReference(dateParam ?? weekParam, user.timezone);
 
   const allGroups = await listGroupsForUser(user.id);
   const allGroupIds = allGroups.map((group) => group.id);
@@ -74,26 +105,44 @@ export default async function CalendarPage({
   const members = dedupeMembers(memberLists.flat());
   const ownSlots = slots.filter((slot) => slot.user.id === user.id);
 
-  const weekDays = getWeekDays(user.timezone, resolveWeekReference(week, user.timezone));
-  // Expand recurring rules only for the visible Mon–Sun window (exclusive end).
-  const weekWindow = {
-    start: new Date(weekDays[0].getTime()),
-    end: new Date(addDays(weekDays[6], 1).getTime()),
-  };
-  const occurrences = expandSlotsToOccurrences(slots, weekWindow);
+  const window = getViewWindow(view, user.timezone, reference);
+  const occurrences = expandSlotsToOccurrences(slots, window);
+
+  const weekDays = view === "week" ? getWeekDays(user.timezone, reference) : null;
+  const monthDays = view === "month" ? getMonthDays(user.timezone, reference) : null;
+  const yearMonths = view === "year" ? getYearMonths(user.timezone, reference) : null;
+
+  const localRef = utcToWallClock(reference, user.timezone);
+  const dateKey = formatLocalDateParts(getLocalDateParts(reference, user.timezone));
+
   const weekLabel = new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     timeZone: user.timezone,
   });
 
-  // Each nav control preserves the *other* one's already-resolved value, so
-  // switching weeks never resets the group filter and vice versa.
+  let periodDescription: string;
+  if (view === "week" && weekDays) {
+    periodDescription = `Week of ${weekLabel.format(weekDays[0])} – ${weekLabel.format(weekDays[6])}`;
+  } else if (view === "month") {
+    periodDescription = `${MONTH_LABELS[localRef.getMonth()]} ${localRef.getFullYear()}`;
+  } else {
+    periodDescription = `${localRef.getFullYear()}`;
+  }
+
+  // Each nav control preserves the *other* ones' already-resolved values, so
+  // switching weeks/views never resets the group filter and vice versa.
   const groupsExtraQuery =
     selectedIds.length === allGroupIds.length
       ? undefined
       : `groups=${encodeURIComponent(selectedIds.join(","))}`;
-  const weekExtraQuery = `week=${formatWeekParam(weekDays[0])}`;
+  const viewExtraQuery = view === "week" ? undefined : `view=${view}`;
+  const dateExtraQuery = `date=${dateKey}`;
+
+  const navExtraQuery = joinQueryParts([viewExtraQuery, groupsExtraQuery]);
+  const viewSwitcherExtraQuery = joinQueryParts([dateExtraQuery, groupsExtraQuery]);
+  const groupFilterExtraQuery = joinQueryParts([viewExtraQuery, dateExtraQuery]);
+  const drillExtraQuery = groupsExtraQuery;
 
   return (
     <div className="flex min-h-full flex-col bg-zinc-50 dark:bg-zinc-950">
@@ -124,11 +173,23 @@ export default async function CalendarPage({
                 Calendar
               </h1>
               <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
-                Week of {weekLabel.format(weekDays[0])} – {weekLabel.format(weekDays[6])} ·
-                Shown in {user.timezone.replace(/_/g, " ")}
+                {periodDescription} · Shown in {user.timezone.replace(/_/g, " ")}
               </p>
             </div>
-            <WeekNav basePath="/calendar" weekDays={weekDays} extraQuery={groupsExtraQuery} />
+            <div className="flex flex-wrap items-center gap-2">
+              <CalendarViewSwitcher
+                basePath="/calendar"
+                view={view}
+                extraQuery={viewSwitcherExtraQuery}
+              />
+              <CalendarNav
+                basePath="/calendar"
+                view={view}
+                reference={reference}
+                timeZone={user.timezone}
+                extraQuery={navExtraQuery}
+              />
+            </div>
           </div>
 
           {allGroups.length === 0 ? (
@@ -145,7 +206,7 @@ export default async function CalendarPage({
                 basePath="/calendar"
                 groups={allGroups}
                 selectedIds={selectedIds}
-                extraQuery={weekExtraQuery}
+                extraQuery={groupFilterExtraQuery}
               />
 
               {selectedIds.length === 0 && (
@@ -156,14 +217,37 @@ export default async function CalendarPage({
             </>
           )}
 
-          <CalendarGrid
-            occurrences={occurrences}
-            members={members}
-            timeZone={user.timezone}
-            weekDays={weekDays}
-            viewerId={user.id}
-            showGroupNames={selectedIds.length > 1}
-          />
+          {view === "week" && weekDays && (
+            <CalendarGrid
+              occurrences={occurrences}
+              members={members}
+              timeZone={user.timezone}
+              weekDays={weekDays}
+              viewerId={user.id}
+              showGroupNames={selectedIds.length > 1}
+            />
+          )}
+
+          {view === "month" && monthDays && (
+            <CalendarMonthGrid
+              occurrences={occurrences}
+              members={members}
+              timeZone={user.timezone}
+              monthDays={monthDays}
+              reference={reference}
+              viewerId={user.id}
+              drillExtraQuery={drillExtraQuery}
+            />
+          )}
+
+          {view === "year" && yearMonths && (
+            <CalendarYearGrid
+              occurrences={occurrences}
+              timeZone={user.timezone}
+              yearMonths={yearMonths}
+              drillExtraQuery={drillExtraQuery}
+            />
+          )}
         </main>
       </div>
     </div>

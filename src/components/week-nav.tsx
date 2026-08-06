@@ -7,7 +7,7 @@ const BUTTON_CLASSNAME =
   "rounded-lg border border-zinc-300 bg-white px-2.5 py-1.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800";
 
 interface WeekNavProps {
-  /** Route to navigate within, e.g. `/calendar` — the `?week=` param is appended to this. */
+  /** Route to navigate within, e.g. `/calendar` — the `?date=` param is appended to this. */
   basePath: string;
   weekDays: Date[];
   /**
@@ -21,18 +21,20 @@ interface WeekNavProps {
 
 /**
  * Prev/next/today controls plus a "jump to any week" date picker, driven
- * entirely by the `?week=YYYY-MM-DD` search param — every link here just
+ * entirely by the `?date=YYYY-MM-DD` search param — every link here just
  * points at a different value of that param, computed from `weekDays[0]`
- * (already resolved server-side by `resolveWeekReference`/`getWeekDays`).
+ * (already resolved server-side by `resolveDateReference`/`getWeekDays`).
+ *
+ * Prefer {@link CalendarNav} when the active view may be month or year.
  */
 export function WeekNav({ basePath, weekDays, extraQuery }: WeekNavProps) {
   const weekStart = weekDays[0];
   const prevHref = withExtraQuery(
-    `${basePath}?week=${formatWeekParam(subDays(weekStart, 7))}`,
+    `${basePath}?date=${formatWeekParam(subDays(weekStart, 7))}`,
     extraQuery,
   );
   const nextHref = withExtraQuery(
-    `${basePath}?week=${formatWeekParam(addDays(weekStart, 7))}`,
+    `${basePath}?date=${formatWeekParam(addDays(weekStart, 7))}`,
     extraQuery,
   );
   const todayHref = withExtraQuery(basePath, extraQuery);

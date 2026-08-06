@@ -2,29 +2,34 @@
 
 import { useRouter } from "next/navigation";
 
-interface WeekDatePickerProps {
+interface CalendarDatePickerProps {
   basePath: string;
   defaultValue: string;
-  /** Other already-serialized search params to preserve — see `WeekNav`. */
+  /**
+   * Other already-serialized search params to preserve (e.g. `view=` and
+   * `groups=`), so jumping to a date never resets the active view or filter.
+   */
   extraQuery?: string;
 }
 
 /**
- * A native date input that jumps the calendar to the week containing
+ * A native date input that jumps the calendar to the period containing
  * whatever date is picked. Reads the browser-supplied `YYYY-MM-DD` string
  * straight off the input and hands it to the server as `?date=`, so there's
  * no client-side date parsing or arithmetic here — the server component
  * (via `resolveDateReference`) is the only place that interprets it.
- *
- * Prefer {@link CalendarDatePicker} for shared week/month/year navigation.
  */
-export function WeekDatePicker({ basePath, defaultValue, extraQuery }: WeekDatePickerProps) {
+export function CalendarDatePicker({
+  basePath,
+  defaultValue,
+  extraQuery,
+}: CalendarDatePickerProps) {
   const router = useRouter();
 
   return (
     <input
       type="date"
-      aria-label="Jump to week containing date"
+      aria-label="Jump to date"
       defaultValue={defaultValue}
       onChange={(event) => {
         const value = event.target.value;

@@ -22,13 +22,13 @@ interface GroupFilterProps {
   groups: GroupFilterGroup[];
   /** Groups currently shown on the calendar (already validated server-side). */
   selectedIds: string[];
-  /** Other already-serialized search params to preserve — see `WeekNav`. */
+  /** Other already-serialized search params to preserve — see `CalendarNav`. */
   extraQuery?: string;
 }
 
 /**
  * A multi-select "which groups should the calendar overlay?" control, driven
- * entirely by the `?groups=id1,id2` search param — like `WeekNav`, every
+ * entirely by the `?groups=id1,id2` search param — like `CalendarNav`, every
  * pill here is a plain link to a different value of that param, so toggling
  * a group works with JavaScript disabled and needs no client component.
  * Selecting every group omits the param entirely (the default), and
