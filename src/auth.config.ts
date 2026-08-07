@@ -26,9 +26,10 @@ export const authConfig = {
       // back at the invite link, so signing in or registering bounces the
       // visitor straight back to complete the join.
       const isOnGroups = pathname.startsWith("/groups");
+      const isOnAccount = pathname.startsWith("/account");
       const isOnAuthPage = pathname === "/login" || pathname === "/register";
 
-      if (isOnCalendar || isOnGroups) {
+      if (isOnCalendar || isOnGroups || isOnAccount) {
         return isLoggedIn;
       }
       if (isOnAuthPage && isLoggedIn) {

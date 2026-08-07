@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { TimeZoneSelect } from "@/components/timezone-select";
-import { signOutAction, updateTimezoneAction } from "@/app/actions";
+import { AccountMenu } from "@/components/account-menu";
+import { updateTimezoneAction } from "@/app/actions";
 
 interface AppHeaderProps {
   user: {
@@ -8,7 +9,8 @@ interface AppHeaderProps {
     email: string;
     timezone: string;
   };
-  activeNav: "calendar" | "groups";
+  /** `null` when the current page isn't one of the primary nav links (e.g. `/account`). */
+  activeNav: "calendar" | "groups" | null;
 }
 
 const NAV_LINKS = [
@@ -63,15 +65,7 @@ export function AppHeader({ user, activeNav }: AppHeaderProps) {
             </button>
           </form>
 
-          <form action={signOutAction}>
-            <button
-              type="submit"
-              title={user.email}
-              className="flex size-8 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-200 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
-            >
-              {(user.name ?? user.email).slice(0, 1).toUpperCase()}
-            </button>
-          </form>
+          <AccountMenu user={user} />
         </div>
       </div>
 

@@ -107,6 +107,65 @@ export async function updateUserTimezone(
   }
 }
 
+export async function updateUserName(
+  userId: string,
+  name: string,
+): Promise<PublicUser> {
+  try {
+    return await db.user.update({
+      where: { id: userId },
+      data: { name: name.trim() || null },
+      select: PUBLIC_USER_SELECT,
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2025"
+    ) {
+      throw new NotFoundError(`No user found with id "${userId}".`);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Changes a user's password after verifying `currentPassword` against the
+ * stored hash. Throws `ValidationError` if the current password is wrong or
+ * `newPassword` is too short — both are user-input problems, not server
+ * errors, so callers can surface `error.message` directly.
+ */
+export async function updateUserPassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string,
+): Promise<PublicUser> {
+  const record = await db.user.findUnique({
+    where: { id: userId },
+    select: { passwordHash: true },
+  });
+  if (!record) {
+    throw new NotFoundError(`No user found with id "${userId}".`);
+  }
+
+  const isValid = await verifyPassword(currentPassword, record.passwordHash);
+  if (!isValid) {
+    throw new ValidationError("Current password is incorrect.");
+  }
+
+  if (newPassword.length < MIN_PASSWORD_LENGTH) {
+    throw new ValidationError(
+      `Password must be at least ${MIN_PASSWORD_LENGTH} characters long.`,
+    );
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+  return db.user.update({
+    where: { id: userId },
+    data: { passwordHash },
+    select: PUBLIC_USER_SELECT,
+  });
+}
+
 /**
  * Verifies an email/password pair for the Credentials provider. Returns the
  * public user shape on success, or `null` on any failure — unknown email or
