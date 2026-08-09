@@ -1,11 +1,11 @@
 import { isSameDay } from "date-fns";
 import type { AvailabilityOccurrence } from "@/lib/services/availability";
 import {
-  DEFAULT_SCROLL_HOUR,
   GRID_END_HOUR,
   GRID_START_HOUR,
   WEEKDAY_LABELS,
   layoutGroupSlotsForWeek,
+  resolveGridScrollHour,
 } from "@/lib/calendar";
 import { utcToWallClock } from "@/lib/timezone";
 import { getMemberColor } from "@/lib/member-colors";
@@ -16,7 +16,7 @@ const HOURS = Array.from(
   { length: GRID_END_HOUR - GRID_START_HOUR },
   (_, i) => i + GRID_START_HOUR,
 );
-const ROW_HEIGHT_REM = 4;
+const ROW_HEIGHT_REM = 1.5;
 const LANE_GAP_PX = 2;
 const GRID_MAX_HEIGHT = "70vh";
 
@@ -59,9 +59,11 @@ export function CalendarGrid({
   showGroupNames,
 }: CalendarGridProps) {
   const positioned = layoutGroupSlotsForWeek(occurrences, timeZone, weekDays);
-  const today = utcToWallClock(new Date(), timeZone);
+  const now = new Date();
+  const today = utcToWallClock(now, timeZone);
   const gridHeight = `${HOURS.length * ROW_HEIGHT_REM}rem`;
   const memberIndexById = new Map(members.map((member, index) => [member.id, index]));
+  const scrollToHour = resolveGridScrollHour(weekDays, timeZone, now);
 
   return (
     <div className="space-y-3">
@@ -94,7 +96,7 @@ export function CalendarGrid({
           })}
         </div>
 
-        <CalendarScrollContainer scrollToHour={DEFAULT_SCROLL_HOUR} maxHeight={GRID_MAX_HEIGHT}>
+        <CalendarScrollContainer scrollToHour={scrollToHour} maxHeight={GRID_MAX_HEIGHT}>
           <div className="grid grid-cols-[4rem_repeat(7,minmax(0,1fr))]">
             <div className="flex flex-col border-r border-zinc-200 dark:border-zinc-800">
               {HOURS.map((hour) => (
