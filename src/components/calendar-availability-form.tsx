@@ -1,12 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useActionState, useMemo, useState } from "react";
 import {
   addCalendarAvailabilitySlotAction,
   type CalendarActionState,
 } from "@/app/calendar/actions";
 import { TimeZoneSelect } from "@/components/timezone-select";
+import {
+  addLocalDays,
+  isValidTimeZone,
+  localDateAndMinutesToUtc,
+  parseLocalDateString,
+  parseTimeToMinutes,
+} from "@/lib/timezone";
 
 const initialState: CalendarActionState = {};
 
@@ -33,11 +40,17 @@ function todayIso(): string {
   ).padStart(2, "0")}`;
 }
 
+function shortLabel(timeZone: string): string {
+  return (timeZone.split("/").pop() ?? timeZone).replace(/_/g, " ");
+}
+
 interface CalendarAvailabilityFormProps {
   groups: { id: string; name: string }[];
   /** Groups pre-checked in the multi-select (typically the calendar filter). */
   defaultGroupIds?: string[];
   defaultTimeZone: string;
+  /** From Account settings — shown as a live conversion preview below the time zone field. */
+  favoriteTimeZones: string[];
 }
 
 /**
@@ -49,12 +62,55 @@ export function CalendarAvailabilityForm({
   groups,
   defaultGroupIds,
   defaultTimeZone,
+  favoriteTimeZones,
 }: CalendarAvailabilityFormProps) {
   const [state, formAction, pending] = useActionState(
     addCalendarAvailabilitySlotAction,
     initialState,
   );
   const [mode, setMode] = useState<"one-off" | "recurring">("one-off");
+
+  // Tracked (rather than left as uncontrolled defaultValue inputs) purely to
+  // drive the conversion preview below — the form still submits these by
+  // `name` like any other input.
+  const [date, setDate] = useState(todayIso());
+  const [rangeStart, setRangeStart] = useState("");
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("17:00");
+  const [timeZone, setTimeZone] = useState(defaultTimeZone);
+
+  const anchorDateStr = mode === "recurring" ? rangeStart || date : date;
+
+  const conversions = useMemo(() => {
+    if (favoriteTimeZones.length === 0 || !isValidTimeZone(timeZone)) return [];
+    const dateParts = parseLocalDateString(anchorDateStr);
+    const startMinutes = parseTimeToMinutes(startTime);
+    const endMinutes = parseTimeToMinutes(endTime);
+    if (!dateParts || startMinutes === null || endMinutes === null) return [];
+
+    const startUtc = localDateAndMinutesToUtc(dateParts, startMinutes, timeZone);
+    // Same "earlier end time means it spans midnight" rule the form's own
+    // helper text describes — good enough for a preview, even though the
+    // actual submission may also consult an explicit end date.
+    const endDateParts =
+      endMinutes <= startMinutes ? addLocalDays(dateParts, 1, timeZone) : dateParts;
+    const endUtc = localDateAndMinutesToUtc(endDateParts, endMinutes, timeZone);
+
+    const format = (zone: string, instant: Date) =>
+      new Intl.DateTimeFormat("en-US", {
+        weekday: "short",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: zone,
+      }).format(instant);
+
+    return favoriteTimeZones
+      .filter((zone) => zone !== timeZone)
+      .map((zone) => ({
+        zone,
+        range: `${format(zone, startUtc)} – ${format(zone, endUtc)}`,
+      }));
+  }, [anchorDateStr, startTime, endTime, timeZone, favoriteTimeZones]);
 
   if (groups.length === 0) {
     return (
@@ -150,7 +206,8 @@ export function CalendarAvailabilityForm({
               name="date"
               id="date"
               required
-              defaultValue={todayIso()}
+              value={date}
+              onChange={(event) => setDate(event.target.value)}
               className={INPUT_CLASSNAME}
             />
           </div>
@@ -165,7 +222,8 @@ export function CalendarAvailabilityForm({
                 name="startTime"
                 id="startTime"
                 required
-                defaultValue="09:00"
+                value={startTime}
+                onChange={(event) => setStartTime(event.target.value)}
                 className={INPUT_CLASSNAME}
               />
             </div>
@@ -178,7 +236,8 @@ export function CalendarAvailabilityForm({
                 name="endTime"
                 id="endTime"
                 required
-                defaultValue="17:00"
+                value={endTime}
+                onChange={(event) => setEndTime(event.target.value)}
                 className={INPUT_CLASSNAME}
               />
             </div>
@@ -231,6 +290,8 @@ export function CalendarAvailabilityForm({
                 type="date"
                 name="rangeStart"
                 id="rangeStart"
+                value={rangeStart}
+                onChange={(event) => setRangeStart(event.target.value)}
                 className={INPUT_CLASSNAME}
               />
             </div>
@@ -261,7 +322,8 @@ export function CalendarAvailabilityForm({
                 name="startTime"
                 id="startTimeRecurring"
                 required
-                defaultValue="09:00"
+                value={startTime}
+                onChange={(event) => setStartTime(event.target.value)}
                 className={INPUT_CLASSNAME}
               />
             </div>
@@ -274,7 +336,8 @@ export function CalendarAvailabilityForm({
                 name="endTime"
                 id="endTimeRecurring"
                 required
-                defaultValue="17:00"
+                value={endTime}
+                onChange={(event) => setEndTime(event.target.value)}
                 className={INPUT_CLASSNAME}
               />
             </div>
@@ -290,11 +353,44 @@ export function CalendarAvailabilityForm({
         <label htmlFor="timeZone" className={LABEL_CLASSNAME}>
           Time zone
         </label>
-        <TimeZoneSelect name="timeZone" defaultValue={defaultTimeZone} required />
+        <TimeZoneSelect
+          name="timeZone"
+          defaultValue={defaultTimeZone}
+          onChange={setTimeZone}
+          required
+        />
         <p className="text-xs text-zinc-400 dark:text-zinc-500">
           Times above are interpreted in this zone, then stored as UTC.
         </p>
       </div>
+
+      {favoriteTimeZones.length === 0 ? (
+        <p className="text-xs text-zinc-400 dark:text-zinc-500">
+          Add{" "}
+          <Link href="/account" className="font-medium underline">
+            favorite time zones
+          </Link>{" "}
+          to see what this converts to for them.
+        </p>
+      ) : (
+        <div className="space-y-1 rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-950/40">
+          <p className={LABEL_CLASSNAME}>Converts to</p>
+          {conversions.length === 0 ? (
+            <p className="text-xs text-zinc-400 dark:text-zinc-500">
+              Fill in a date and times above to see conversions.
+            </p>
+          ) : (
+            <ul className="space-y-0.5 text-sm text-zinc-700 dark:text-zinc-300">
+              {conversions.map(({ zone, range }) => (
+                <li key={zone} className="flex justify-between gap-2">
+                  <span className="text-zinc-500 dark:text-zinc-400">{shortLabel(zone)}</span>
+                  <span className="font-medium">{range}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {state.error && (
         <p className="text-sm text-red-600 dark:text-red-400">{state.error}</p>

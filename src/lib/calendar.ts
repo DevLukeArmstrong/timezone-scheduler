@@ -24,8 +24,6 @@ import {
 /** The calendar grid always spans the full day; slots can start/end at any hour. */
 export const GRID_START_HOUR = 0;
 export const GRID_END_HOUR = 24;
-/** Hour the calendar's scrollable grid is scrolled to by default, so the working day is in view on load. */
-export const DEFAULT_SCROLL_HOUR = 7;
 export const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 export const MONTH_LABELS = [
   "January",
@@ -58,6 +56,34 @@ export function getWeekDays(
   const now = TZDate.tz(timeZone, reference.getTime());
   const monday = startOfWeek(now, { weekStartsOn: 1 });
   return Array.from({ length: 7 }, (_, i) => addDays(monday, i) as TZDate);
+}
+
+/** Hour the week grid falls back to when "now" isn't a sensible auto-scroll target. */
+const FALLBACK_SCROLL_HOUR = 10;
+/** Sensible daytime range (inclusive start, exclusive end) for auto-scrolling to the viewer's current hour. */
+const SCROLL_TO_NOW_START_HOUR = 8;
+const SCROLL_TO_NOW_END_HOUR = 23;
+
+/**
+ * Picks which hour the week grid's scrollable container should open on. When
+ * `weekDays` is the week containing `now` and the viewer's current local hour
+ * falls within a sensible daytime range, scrolls to roughly that hour so the
+ * grid opens on "now". Otherwise — a different week, or the current hour is
+ * late night/very early morning — falls back to a fixed mid-morning hour
+ * rather than landing somewhere unhelpful.
+ */
+export function resolveGridScrollHour(
+  weekDays: Date[],
+  timeZone: string,
+  now: Date = new Date(),
+): number {
+  const isCurrentWeek = weekDays[0].getTime() === getWeekDays(timeZone, now)[0].getTime();
+  if (!isCurrentWeek) return FALLBACK_SCROLL_HOUR;
+
+  const currentHour = utcToWallClock(now, timeZone).getHours();
+  const isSensibleDaytime =
+    currentHour >= SCROLL_TO_NOW_START_HOUR && currentHour < SCROLL_TO_NOW_END_HOUR;
+  return isSensibleDaytime ? currentHour : FALLBACK_SCROLL_HOUR;
 }
 
 /**

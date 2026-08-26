@@ -1,10 +1,11 @@
 import { db, Prisma, type User } from "@/lib/db";
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
-import { isValidTimeZone } from "@/lib/timezone";
+import { isValidTimeZone, PINNED_TIME_ZONES } from "@/lib/timezone";
 import { hashPassword, verifyPassword } from "@/lib/password";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MIN_PASSWORD_LENGTH = 8;
+/** Shared with password-reset.ts so both password-setting paths enforce the same rule. */
+export const MIN_PASSWORD_LENGTH = 8;
 
 /** Everything about a `User` that's safe to hand back to callers/UI — never `passwordHash`. */
 export type PublicUser = Omit<User, "passwordHash">;
@@ -16,6 +17,9 @@ const PUBLIC_USER_SELECT = {
   timezone: true,
   createdAt: true,
   updatedAt: true,
+  notifyReminder: true,
+  notifyOverlap: true,
+  notifyNewAvailability: true,
 } satisfies { [K in keyof PublicUser]: true };
 
 export interface CreateUserInput {
@@ -55,7 +59,17 @@ export async function createUser(input: CreateUserInput): Promise<PublicUser> {
 
   try {
     return await db.user.create({
-      data: { email, name, timezone, passwordHash },
+      data: {
+        email,
+        name,
+        timezone,
+        passwordHash,
+        // Seeded once at signup, not computed as a runtime fallback, so a
+        // user who deliberately clears their list stays cleared.
+        favoriteTimeZones: {
+          create: PINNED_TIME_ZONES.map((timeZone, index) => ({ timeZone, position: index })),
+        },
+      },
       select: PUBLIC_USER_SELECT,
     });
   } catch (error) {
@@ -94,6 +108,92 @@ export async function updateUserTimezone(
     return await db.user.update({
       where: { id: userId },
       data: { timezone: trimmed },
+      select: PUBLIC_USER_SELECT,
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2025"
+    ) {
+      throw new NotFoundError(`No user found with id "${userId}".`);
+    }
+    throw error;
+  }
+}
+
+export async function updateUserName(
+  userId: string,
+  name: string,
+): Promise<PublicUser> {
+  try {
+    return await db.user.update({
+      where: { id: userId },
+      data: { name: name.trim() || null },
+      select: PUBLIC_USER_SELECT,
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2025"
+    ) {
+      throw new NotFoundError(`No user found with id "${userId}".`);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Changes a user's password after verifying `currentPassword` against the
+ * stored hash. Throws `ValidationError` if the current password is wrong or
+ * `newPassword` is too short — both are user-input problems, not server
+ * errors, so callers can surface `error.message` directly.
+ */
+export async function updateUserPassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string,
+): Promise<PublicUser> {
+  const record = await db.user.findUnique({
+    where: { id: userId },
+    select: { passwordHash: true },
+  });
+  if (!record) {
+    throw new NotFoundError(`No user found with id "${userId}".`);
+  }
+
+  const isValid = await verifyPassword(currentPassword, record.passwordHash);
+  if (!isValid) {
+    throw new ValidationError("Current password is incorrect.");
+  }
+
+  if (newPassword.length < MIN_PASSWORD_LENGTH) {
+    throw new ValidationError(
+      `Password must be at least ${MIN_PASSWORD_LENGTH} characters long.`,
+    );
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+  return db.user.update({
+    where: { id: userId },
+    data: { passwordHash },
+    select: PUBLIC_USER_SELECT,
+  });
+}
+
+export interface NotificationPreferences {
+  notifyReminder: boolean;
+  notifyOverlap: boolean;
+  notifyNewAvailability: boolean;
+}
+
+export async function updateNotificationPreferences(
+  userId: string,
+  preferences: NotificationPreferences,
+): Promise<PublicUser> {
+  try {
+    return await db.user.update({
+      where: { id: userId },
+      data: preferences,
       select: PUBLIC_USER_SELECT,
     });
   } catch (error) {

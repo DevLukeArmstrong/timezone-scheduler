@@ -12,6 +12,7 @@ import {
   expandSlotsToOccurrences,
   listAvailabilitySlotsForGroups,
 } from "@/lib/services/availability";
+import { listFavoriteTimeZones } from "@/lib/services/favorite-timezones";
 import {
   MONTH_LABELS,
   getMonthDays,
@@ -97,9 +98,10 @@ export default async function CalendarPage({
   ).filter((group): group is Group => group !== null);
   const selectedIds = authorizedGroups.map((group) => group.id);
 
-  const [slots, memberLists] = await Promise.all([
+  const [slots, memberLists, favoriteTimeZones] = await Promise.all([
     listAvailabilitySlotsForGroups(selectedIds),
     Promise.all(selectedIds.map((id) => listGroupMembers(id))),
+    listFavoriteTimeZones(user.id),
   ]);
 
   const members = dedupeMembers(memberLists.flat());
@@ -156,6 +158,7 @@ export default async function CalendarPage({
               selectedIds.length > 0 ? selectedIds : allGroups.map((group) => group.id)
             }
             defaultTimeZone={user.timezone}
+            favoriteTimeZones={favoriteTimeZones}
           />
 
           <section className="space-y-2 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">

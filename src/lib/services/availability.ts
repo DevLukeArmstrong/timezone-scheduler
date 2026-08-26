@@ -433,6 +433,44 @@ export async function deleteAvailabilitySlotsByBatch(
   }
 }
 
+/**
+ * Whether a user has any availability — one-off or recurring, in any group
+ * scope or the personal dashboard — overlapping `[windowStart, windowEnd)`.
+ * Used by the weekly reminder job to decide who has nothing scheduled for
+ * the upcoming week; shares the same expansion logic as the calendar views
+ * and {@link assertNoOverlap} so results always agree with what a user sees
+ * on their own calendar.
+ */
+export async function userHasAvailabilityInWindow(
+  userId: string,
+  windowStart: Date,
+  windowEnd: Date,
+): Promise<boolean> {
+  const slots = await db.availabilitySlot.findMany({
+    where: { userId },
+    include: { recurrence: true, exceptions: true },
+  });
+
+  for (const slot of slots) {
+    if (!slot.recurrence) {
+      if (slot.startTime < windowEnd && slot.endTime > windowStart) {
+        return true;
+      }
+      continue;
+    }
+
+    const expanded = expandRecurrenceRule(
+      slot.recurrence,
+      windowStart,
+      windowEnd,
+      slot.exceptions,
+    );
+    if (expanded.length > 0) return true;
+  }
+
+  return false;
+}
+
 function toUtcDate(value: Date | string, field: string): Date {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) {

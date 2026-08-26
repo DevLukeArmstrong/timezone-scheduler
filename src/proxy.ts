@@ -7,5 +7,17 @@
 export { auth as proxy } from "@/auth";
 
 export const config = {
-  matcher: ["/calendar", "/calendar/:path*", "/groups", "/groups/:path*", "/login", "/register"],
+  matcher: [
+    "/calendar",
+    "/calendar/:path*",
+    "/groups",
+    "/groups/:path*",
+    "/account",
+    "/account/:path*",
+    "/login",
+    "/register",
+    "/forgot-password",
+    "/reset-password",
+    "/reset-password/:path*",
+  ],
 };

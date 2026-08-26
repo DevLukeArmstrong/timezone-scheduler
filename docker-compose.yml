@@ -1,27 +1,75 @@
-# Database service for local testing or Proxmox deployment.
-# The Next.js app is not containerized yet — run it with npm run dev / start.
+# Full self-hosted stack for Proxmox: the app, a one-off migration runner, a
+# free-DDNS updater, and Nginx Proxy Manager for TLS. Postgres itself is NOT
+# in this file — it's the existing `postgres-db` LXC (CT 101 on the
+# `proxmox` node, 10.0.0.195), already running with real schema and data,
+# reachable at POSTGRES_HOST.
+#
+# Email (Resend) and the weekly-reminder cron job are deliberately not part
+# of this stack right now — see the runbook's "optional, for later" section
+# for what adding them back involves. Without email configured, the app
+# still runs fine; forgot-password just skips sending a link instead of
+# erroring (see src/lib/email.ts).
 #
 # Usage:
-#   docker compose up -d db
-#   Switch prisma/schema.prisma provider to "postgresql", then npm run db:migrate
+#   cp .env.example .env         # fill in POSTGRES_HOST, POSTGRES_PASSWORD, AUTH_SECRET, etc.
+#   docker compose run --rm migrate   # applies any pending migrations against postgres-db
+#   docker compose up -d              # app, ddns, and npm (reverse proxy)
 
 services:
-  db:
-    image: postgres:16-alpine
+  # One-off: `docker compose run --rm migrate`. Uses the `builder` stage,
+  # which still has the Prisma CLI (the slim `runner` image the app runs
+  # from does not). Not started by `docker compose up`.
+  migrate:
+    build:
+      context: .
+      target: builder
+    command: npx prisma migrate deploy
+    environment:
+      DATABASE_URL: postgresql://scheduler_user:${POSTGRES_PASSWORD:?set this in .env}@${POSTGRES_HOST:?set this in .env to postgres-db's IP}:5432/timezone_scheduler_db?schema=public
+
+  app:
+    build:
+      context: .
+      target: runner
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://scheduler_user:${POSTGRES_PASSWORD:?set this in .env}@${POSTGRES_HOST:?set this in .env to postgres-db's IP}:5432/timezone_scheduler_db?schema=public
+    # Not published to the host — Nginx Proxy Manager reaches it over the
+    # internal `default` network at app:3000. Uncomment to hit it directly
+    # for debugging without going through the proxy.
+    # ports:
+    #   - "3000:3000"
+
+  # Keeps a free DuckDNS hostname (https://www.duckdns.org) pointed at your
+  # home IP, so nothing extra needs to run on the router even if the ISP
+  # reassigns your public IP. Not needed if you're using a paid domain
+  # through a registrar with its own DDNS support instead.
+  duckdns:
+    image: linuxserver/duckdns:latest
     restart: unless-stopped
     environment:
-      POSTGRES_USER: scheduler
-      POSTGRES_PASSWORD: scheduler
-      POSTGRES_DB: timezone_scheduler
+      SUBDOMAINS: ${DUCKDNS_SUBDOMAINS}
+      TOKEN: ${DUCKDNS_TOKEN}
+      TZ: Etc/UTC
+
+  # Reverse proxy + TLS. First run: visit http://<host>:81, log in with the
+  # default admin@example.com / changeme (change it immediately), then add a
+  # Proxy Host pointing your domain at "app" port 3000, with "Force SSL" and
+  # a Let's Encrypt certificate requested from its own UI.
+  npm:
+    image: jc21/nginx-proxy-manager:latest
+    restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "80:80"
+      - "443:443"
+      - "81:81"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U scheduler -d timezone_scheduler"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      - npm_data:/data
+      - npm_letsencrypt:/etc/letsencrypt
+    depends_on:
+      - app
 
 volumes:
-  postgres_data:
+  npm_data:
+  npm_letsencrypt:
