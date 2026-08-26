@@ -2,7 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
-import { updateUserName, updateUserPassword } from "@/lib/services/users";
+import {
+  updateNotificationPreferences,
+  updateUserName,
+  updateUserPassword,
+} from "@/lib/services/users";
+import { setFavoriteTimeZones } from "@/lib/services/favorite-timezones";
 import { ServiceError } from "@/lib/errors";
 
 export interface UpdateNameActionState {
@@ -62,6 +67,67 @@ export async function updatePasswordAction(
 
   try {
     await updateUserPassword(userId, currentPassword, newPassword);
+  } catch (error) {
+    if (error instanceof ServiceError) {
+      return { error: error.message };
+    }
+    throw error;
+  }
+
+  return { success: true };
+}
+
+export interface UpdateFavoriteTimeZonesActionState {
+  error?: string;
+  success?: boolean;
+}
+
+export async function updateFavoriteTimeZonesAction(
+  _prevState: UpdateFavoriteTimeZonesActionState,
+  formData: FormData,
+): Promise<UpdateFavoriteTimeZonesActionState> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return { error: "You must be signed in." };
+  }
+
+  try {
+    await setFavoriteTimeZones(userId, formData.getAll("timeZones").map(String));
+  } catch (error) {
+    if (error instanceof ServiceError) {
+      return { error: error.message };
+    }
+    throw error;
+  }
+
+  // The calendar's availability form also reads this list, on a different route.
+  revalidatePath("/calendar");
+  return { success: true };
+}
+
+export interface UpdateNotificationPreferencesActionState {
+  error?: string;
+  success?: boolean;
+}
+
+export async function updateNotificationPreferencesAction(
+  _prevState: UpdateNotificationPreferencesActionState,
+  formData: FormData,
+): Promise<UpdateNotificationPreferencesActionState> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return { error: "You must be signed in." };
+  }
+
+  try {
+    // Checked boxes are the only ones present in FormData, so absence means "off".
+    await updateNotificationPreferences(userId, {
+      notifyReminder: formData.has("notifyReminder"),
+      notifyOverlap: formData.has("notifyOverlap"),
+      notifyNewAvailability: formData.has("notifyNewAvailability"),
+    });
   } catch (error) {
     if (error instanceof ServiceError) {
       return { error: error.message };

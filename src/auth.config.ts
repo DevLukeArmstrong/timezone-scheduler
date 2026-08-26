@@ -27,7 +27,11 @@ export const authConfig = {
       // visitor straight back to complete the join.
       const isOnGroups = pathname.startsWith("/groups");
       const isOnAccount = pathname.startsWith("/account");
-      const isOnAuthPage = pathname === "/login" || pathname === "/register";
+      const isOnAuthPage =
+        pathname === "/login" ||
+        pathname === "/register" ||
+        pathname === "/forgot-password" ||
+        pathname.startsWith("/reset-password");
 
       if (isOnCalendar || isOnGroups || isOnAccount) {
         return isLoggedIn;

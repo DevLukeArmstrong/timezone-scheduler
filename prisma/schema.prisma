@@ -29,9 +29,36 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  availabilitySlots AvailabilitySlot[]
-  ownedGroups       Group[]
-  groupMemberships  GroupMembership[]
+  /// Upcoming-availability reminder emails.
+  notifyReminder Boolean @default(true)
+  /// Emails when a new slot overlaps with someone else's in a shared group.
+  notifyOverlap Boolean @default(true)
+  /// Emails when another group member adds new availability.
+  notifyNewAvailability Boolean @default(true)
+
+  availabilitySlots   AvailabilitySlot[]
+  ownedGroups         Group[]
+  groupMemberships    GroupMembership[]
+  notificationLogs    NotificationLog[]
+  passwordResetTokens PasswordResetToken[]
+  favoriteTimeZones   FavoriteTimeZone[]
+}
+
+/// One saved time zone a user wants converted-time previews for while adding
+/// availability — e.g. seeing "6–10pm Pacific" also as Auckland/Melbourne
+/// local time before submitting. Seeded with `PINNED_TIME_ZONES`
+/// (src/lib/timezone.ts) at registration; fully user-editable after that.
+model FavoriteTimeZone {
+  id       String @id @default(cuid())
+  userId   String
+  timeZone String
+  /// Display order, ascending.
+  position Int
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, timeZone])
+  @@index([userId, position])
 }
 
 model AvailabilitySlot {
@@ -53,6 +80,8 @@ model AvailabilitySlot {
 
   /// End of the free window, stored as a UTC instant.
   endTime     DateTime @db.Timestamptz
+
+  createdAt DateTime @default(now())
 
   user       User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   group      Group?                @relation(fields: [groupId], references: [id], onDelete: Cascade)
@@ -122,6 +151,7 @@ model Group {
   owner             User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   memberships       GroupMembership[]
   availabilitySlots AvailabilitySlot[]
+  notificationLogs  NotificationLog[]
 }
 
 /// A member's standing within one group. OWNER is unique per group (the
@@ -146,5 +176,51 @@ model GroupMembership {
 
   /// Makes joining idempotent — joining twice just no-ops instead of erroring.
   @@unique([groupId, userId])
+  @@index([userId])
+}
+
+/// Matches the three `User.notify*` preference booleans — one variant per
+/// notification email a background job can send.
+enum NotificationType {
+  REMINDER
+  OVERLAP
+  NEW_AVAILABILITY
+}
+
+/// One row per notification email actually sent. `dedupeKey` is what makes
+/// sending idempotent — a job checks for an existing row with the key it's
+/// about to use (e.g. "reminder:<userId>:<isoWeekStart>") before sending,
+/// so retries/overlapping runs never double-send the same notification.
+/// Written by future sessions' reminder/digest jobs, not by anything in this
+/// one.
+model NotificationLog {
+  id        String           @id @default(cuid())
+  type      NotificationType
+  userId    String
+  /// Set for group-scoped notifications (e.g. overlap/new-availability); null
+  /// for purely personal ones (e.g. a reminder about the user's own slots).
+  groupId   String?
+  sentAt    DateTime         @default(now())
+  dedupeKey String           @unique
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group Group? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([groupId])
+}
+
+/// A single-use, expiring token for the forgot-password flow. Only the hash
+/// is stored — never the raw token — so a leaked database dump can't be used
+/// to reset accounts (mirrors `User.passwordHash`).
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
 }

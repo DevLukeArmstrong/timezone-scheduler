@@ -42,3 +42,16 @@ export async function sanitizeRedirectTarget(
 
   return fallback;
 }
+
+/**
+ * The current request's origin (protocol + host), for building absolute
+ * URLs — e.g. a password-reset link embedded in an email, which is opened
+ * outside any page context so a relative path won't work.
+ */
+export async function getRequestOrigin(): Promise<string> {
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("host") ?? "localhost:3000";
+  const proto =
+    requestHeaders.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  return `${proto}://${host}`;
+}

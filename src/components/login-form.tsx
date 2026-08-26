@@ -49,12 +49,20 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
       </div>
 
       <div className="space-y-1.5">
-        <label
-          htmlFor="password"
-          className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400"
-        >
-          Password
-        </label>
+        <div className="flex items-center justify-between">
+          <label
+            htmlFor="password"
+            className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400"
+          >
+            Password
+          </label>
+          <Link
+            href="/forgot-password"
+            className="text-xs font-medium text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
+          >
+            Forgot password?
+          </Link>
+        </div>
         <input
           type="password"
           name="password"

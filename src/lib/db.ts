@@ -50,5 +50,7 @@ export type {
   GroupMembership,
   RecurrenceRule,
   RecurrenceException,
+  NotificationLog,
+  PasswordResetToken,
 } from "../../prisma/generated/client";
-export { Prisma, GroupRole } from "../../prisma/generated/client";
+export { Prisma, GroupRole, NotificationType } from "../../prisma/generated/client";

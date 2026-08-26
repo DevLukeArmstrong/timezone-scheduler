@@ -9,6 +9,8 @@ interface TimeZoneSelectProps {
   defaultValue?: string;
   required?: boolean;
   className?: string;
+  /** Called with the newly selected zone. For parents that need to react live (e.g. a conversion preview) — the form still submits via the hidden input either way. */
+  onChange?: (timeZone: string) => void;
 }
 
 const INPUT_CLASSNAME =
@@ -34,6 +36,7 @@ export function TimeZoneSelect({
   defaultValue,
   required,
   className,
+  onChange,
 }: TimeZoneSelectProps) {
   const allTimeZones = useMemo(() => listIanaTimeZonesPinned(), []);
 
@@ -57,6 +60,7 @@ export function TimeZoneSelect({
     setSelected(timeZone);
     setQuery(toLabel(timeZone));
     setOpen(false);
+    onChange?.(timeZone);
   }
 
   function revertQuery() {

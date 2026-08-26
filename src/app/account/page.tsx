@@ -1,9 +1,12 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { getUserById } from "@/lib/services/users";
+import { listFavoriteTimeZones } from "@/lib/services/favorite-timezones";
 import { AppHeader } from "@/components/app-header";
 import { AccountNameForm } from "@/components/account-name-form";
 import { AccountPasswordForm } from "@/components/account-password-form";
+import { AccountNotificationsForm } from "@/components/account-notifications-form";
+import { AccountTimeZonesForm } from "@/components/account-timezones-form";
 
 export default async function AccountPage() {
   // `proxy.ts` already gates this route, but Server Components should never
@@ -13,6 +16,8 @@ export default async function AccountPage() {
   if (!user) {
     redirect("/login");
   }
+
+  const favoriteTimeZones = await listFavoriteTimeZones(user.id);
 
   return (
     <div className="flex min-h-full flex-col bg-zinc-50 dark:bg-zinc-950">
@@ -31,6 +36,12 @@ export default async function AccountPage() {
         <div className="flex flex-wrap items-start gap-6">
           <AccountNameForm defaultName={user.name ?? ""} />
           <AccountPasswordForm />
+          <AccountNotificationsForm
+            defaultNotifyReminder={user.notifyReminder}
+            defaultNotifyOverlap={user.notifyOverlap}
+            defaultNotifyNewAvailability={user.notifyNewAvailability}
+          />
+          <AccountTimeZonesForm defaultTimeZones={favoriteTimeZones} />
         </div>
       </div>
     </div>
