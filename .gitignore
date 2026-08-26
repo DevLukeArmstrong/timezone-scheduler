@@ -44,6 +44,10 @@ dev.db-journal
 # vercel
 .vercel
 
+# Claude Code local settings (permission preferences etc.) — personal, not shared.
+# .claude/launch.json (dev server config) is intentionally still tracked.
+.claude/settings.local.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
