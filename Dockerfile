@@ -10,6 +10,14 @@ FROM node:20-bookworm-slim AS base
 WORKDIR /app
 
 FROM base AS deps
+# better-sqlite3 has no prebuilt binary for every platform/Node-version
+# combination, so npm sometimes falls back to compiling it from source —
+# which needs a C++ toolchain and Python that the slim base image doesn't
+# ship with. It's a devtime-only dependency (production always uses
+# Postgres, see src/lib/db.ts), but `npm ci` still needs to build it.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 COPY prisma/schema.prisma ./prisma/schema.prisma
 RUN npm ci
