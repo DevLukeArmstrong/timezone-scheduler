@@ -6,9 +6,12 @@ const nextConfig: NextConfig = {
   // Traces only the files each route needs into .next/standalone, so the
   // Docker runtime image doesn't need node_modules or the source tree.
   output: "standalone",
-  // Nginx Proxy Manager buffers responses by default, which breaks
-  // streaming. Told not to, via the header Next.js recommends for
-  // self-hosting behind nginx (see node_modules/next/dist/docs/.../self-hosting.md).
+  // Asks any nginx in front of the app not to buffer responses, which would
+  // break streaming — the header Next.js recommends when self-hosting behind
+  // a proxy (see node_modules/next/dist/docs/.../self-hosting.md). Kept even
+  // though the current front door is a Cloudflare tunnel rather than nginx:
+  // it's inert where nothing reads it, and correct again the moment a
+  // reverse proxy is reintroduced.
   async headers() {
     return [
       {
