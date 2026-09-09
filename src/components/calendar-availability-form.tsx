@@ -5,7 +5,7 @@ import { useActionState, useMemo, useState } from "react";
 import {
   addCalendarAvailabilitySlotAction,
   type CalendarActionState,
-} from "@/app/calendar/actions";
+} from "@/app/calendar-actions";
 import { TimeZoneSelect } from "@/components/timezone-select";
 import {
   addLocalDays,

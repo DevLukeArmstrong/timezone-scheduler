@@ -14,7 +14,7 @@ interface AppHeaderProps {
 }
 
 const NAV_LINKS = [
-  { href: "/calendar", label: "Calendar", key: "calendar" as const },
+  { href: "/", label: "Calendar", key: "calendar" as const },
   { href: "/groups", label: "Groups", key: "groups" as const },
 ];
 

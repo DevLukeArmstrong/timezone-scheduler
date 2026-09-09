@@ -55,7 +55,7 @@ export function CalendarYearGrid({
           const monthParts = getLocalDateParts(monthStart, timeZone);
           const monthDate = formatLocalDateParts(monthParts);
           const monthHref = withExtraQuery(
-            `/calendar?view=month&date=${monthDate}`,
+            `/?view=month&date=${monthDate}`,
             drillExtraQuery,
           );
           const days = getMonthDays(timeZone, monthStart);
@@ -89,7 +89,7 @@ export function CalendarYearGrid({
                   const count = byDay.get(dateKey)?.count ?? 0;
                   const isToday = isSameDay(day, today);
                   const href = withExtraQuery(
-                    `/calendar?date=${dateKey}`,
+                    `/?date=${dateKey}`,
                     drillExtraQuery,
                   );
 

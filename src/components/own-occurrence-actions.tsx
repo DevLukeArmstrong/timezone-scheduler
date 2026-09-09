@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 import {
   deleteCalendarAvailabilityOccurrenceAction,
   deleteCalendarAvailabilitySlotAction,
-} from "@/app/calendar/actions";
+} from "@/app/calendar-actions";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 
 interface OwnOccurrenceActionsProps {
@@ -72,7 +72,10 @@ export function OwnOccurrenceActions({
         <ConfirmSubmitButton
           confirmMessage={`Remove the entire recurring series (${label})?`}
           title="Remove entire series"
-          className="rounded px-1 text-[9px] font-semibold uppercase tracking-wide opacity-70 hover:bg-black/10 hover:opacity-100 dark:hover:bg-white/10"
+          // Sits on top of the "remove this occurrence" target, and both are
+          // destructive, so it needs to be comfortably bigger than the ~16x12
+          // it used to be — mis-tapping it deleted a whole series.
+          className="rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wide opacity-80 hover:bg-black/10 hover:opacity-100 dark:hover:bg-white/10"
         >
           all
         </ConfirmSubmitButton>

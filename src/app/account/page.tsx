@@ -7,6 +7,8 @@ import { AccountNameForm } from "@/components/account-name-form";
 import { AccountPasswordForm } from "@/components/account-password-form";
 import { AccountNotificationsForm } from "@/components/account-notifications-form";
 import { AccountTimeZonesForm } from "@/components/account-timezones-form";
+import { AccountDisplayTimeZoneForm } from "@/components/account-display-timezone-form";
+import { AccountPeakHoursForm } from "@/components/account-peak-hours-form";
 
 export default async function AccountPage() {
   // `proxy.ts` already gates this route, but Server Components should never
@@ -35,6 +37,11 @@ export default async function AccountPage() {
 
         <div className="flex flex-wrap items-start gap-6">
           <AccountNameForm defaultName={user.name ?? ""} />
+          <AccountDisplayTimeZoneForm defaultTimeZone={user.timezone} />
+          <AccountPeakHoursForm
+            defaultPeakStartHour={user.peakStartHour}
+            defaultPeakEndHour={user.peakEndHour}
+          />
           <AccountPasswordForm />
           <AccountNotificationsForm
             defaultNotifyReminder={user.notifyReminder}

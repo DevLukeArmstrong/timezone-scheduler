@@ -63,19 +63,19 @@ export function CalendarMonthGrid({
             const dateKey = formatDateParam(day);
             const summary = byDay.get(dateKey);
             const count = summary?.count ?? 0;
-            const href = withExtraQuery(`/calendar?date=${dateKey}`, drillExtraQuery);
+            const href = withExtraQuery(`/?date=${dateKey}`, drillExtraQuery);
 
             return (
               <Link
                 key={dateKey}
                 href={href}
-                className={`min-h-24 border-b border-r border-zinc-100 p-2 transition-colors last:border-r-0 hover:bg-zinc-50 dark:border-zinc-800/60 dark:hover:bg-zinc-800/40 ${
+                className={`min-h-16 border-b border-r border-zinc-100 p-1 transition-colors sm:min-h-24 sm:p-2 last:border-r-0 hover:bg-zinc-50 dark:border-zinc-800/60 dark:hover:bg-zinc-800/40 ${
                   inMonth ? "" : "bg-zinc-50/80 dark:bg-zinc-950/40"
                 } ${isToday ? "ring-inset ring-1 ring-zinc-400 dark:ring-zinc-500" : ""}`}
               >
                 <div className="flex items-start justify-between gap-1">
                   <span
-                    className={`text-sm font-semibold ${
+                    className={`text-xs font-semibold sm:text-sm ${
                       isToday
                         ? "text-zinc-900 dark:text-zinc-50"
                         : inMonth
@@ -86,7 +86,7 @@ export function CalendarMonthGrid({
                     {day.getDate()}
                   </span>
                   {count > 0 && (
-                    <span className="rounded-md bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                    <span className="rounded-md bg-zinc-100 px-1 py-0.5 text-[10px] font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
                       {count}
                     </span>
                   )}

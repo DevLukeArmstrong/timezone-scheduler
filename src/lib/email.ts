@@ -66,7 +66,8 @@ export function weeklyAvailabilityReminderEmail(
   isoWeekStart: string,
 ): { subject: string; html: string; text: string } {
   const appUrl = process.env.APP_URL ?? "http://localhost:3000";
-  const calendarUrl = `${appUrl}/calendar`;
+  // The calendar is the app's root route, so the bare APP_URL is the link.
+  const calendarUrl = appUrl;
   const greeting = name ? `Hi ${name},` : "Hi,";
   const subject = "You have no availability set for next week";
   const text = [

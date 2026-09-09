@@ -24,3 +24,37 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/*
+ * Week grid, phone widths only: show one day column at a time.
+ *
+ * Seven columns on a 375px screen leaves about 40px each, which is too narrow
+ * to read an owner's name or hit a slot reliably — and no row height fixes a
+ * width problem. So the grid switches to a two-track template (see
+ * `columnsClassName` in calendar-grid.tsx) and all but the selected day are
+ * removed from layout here.
+ *
+ * `display: none` (rather than rendering only one day on the server) is
+ * deliberate: the markup stays identical at every width, so the same server
+ * response is correct for a phone and a desktop, and rotating a tablet
+ * doesn't need a refetch. Which day is selected comes from the `?day=` param,
+ * stamped on the wrapper as `data-mobile-day`.
+ *
+ * Breakpoint matches Tailwind's `sm` (40rem), below which the two-track
+ * template applies.
+ */
+@media (width < 40rem) {
+  [data-mobile-day] [data-day-index] {
+    display: none;
+  }
+
+  [data-mobile-day="0"] [data-day-index="0"],
+  [data-mobile-day="1"] [data-day-index="1"],
+  [data-mobile-day="2"] [data-day-index="2"],
+  [data-mobile-day="3"] [data-day-index="3"],
+  [data-mobile-day="4"] [data-day-index="4"],
+  [data-mobile-day="5"] [data-day-index="5"],
+  [data-mobile-day="6"] [data-day-index="6"] {
+    display: block;
+  }
+}

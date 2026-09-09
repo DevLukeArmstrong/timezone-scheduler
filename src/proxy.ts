@@ -8,8 +8,9 @@ export { auth as proxy } from "@/auth";
 
 export const config = {
   matcher: [
-    "/calendar",
-    "/calendar/:path*",
+    // The calendar lives at the root; `/calendar` is only a 308 back to `/`
+    // (see next.config.ts) and never reaches the app, so it isn't matched.
+    "/",
     "/groups",
     "/groups/:path*",
     "/account",

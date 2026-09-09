@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN     "peakEndHour" INTEGER NOT NULL DEFAULT 24,
+ADD COLUMN     "peakStartHour" INTEGER NOT NULL DEFAULT 9;
