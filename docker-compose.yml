@@ -1,19 +1,19 @@
-# Full self-hosted stack for Proxmox: the app, a one-off migration runner, a
-# free-DDNS updater, and Nginx Proxy Manager for TLS. Postgres itself is NOT
-# in this file — it's the existing `postgres-db` LXC (CT 101 on the
-# `proxmox` node, 10.0.0.195), already running with real schema and data,
-# reachable at POSTGRES_HOST.
+# Full self-hosted stack for Proxmox: the app, a one-off migration runner,
+# and a Cloudflare Tunnel connector that publishes the app to the internet.
 #
-# Email (Resend) and the weekly-reminder cron job are deliberately not part
-# of this stack right now — see the runbook's "optional, for later" section
-# for what adding them back involves. Without email configured, the app
-# still runs fine; forgot-password just skips sending a link instead of
-# erroring (see src/lib/email.ts).
+# Postgres is NOT in this file — it's the existing `postgres-db` LXC (CT 101
+# on the `proxmox` node, 10.0.0.195), already running with real schema and
+# data, reachable at POSTGRES_HOST.
+#
+# Nothing here publishes a port to the host or the LAN. `cloudflared` dials
+# OUT to Cloudflare and holds that connection open, so there is no inbound
+# port to forward on the router — which is the whole reason this stack
+# doesn't need one.
 #
 # Usage:
-#   cp .env.example .env         # fill in POSTGRES_HOST, POSTGRES_PASSWORD, AUTH_SECRET, etc.
+#   cp .env.example .env         # fill in POSTGRES_HOST, POSTGRES_PASSWORD, AUTH_SECRET, CLOUDFLARE_TUNNEL_TOKEN
 #   docker compose run --rm migrate   # applies any pending migrations against postgres-db
-#   docker compose up -d              # app, ddns, and npm (reverse proxy)
+#   docker compose up -d              # app + cloudflared
 
 services:
   # One-off: `docker compose run --rm migrate`. Uses the `builder` stage,
@@ -35,41 +35,20 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql://scheduler_user:${POSTGRES_PASSWORD:?set this in .env}@${POSTGRES_HOST:?set this in .env to postgres-db's IP}:5432/timezone_scheduler_db?schema=public
-    # Not published to the host — Nginx Proxy Manager reaches it over the
-    # internal `default` network at app:3000. Uncomment to hit it directly
-    # for debugging without going through the proxy.
+    # Deliberately no `ports:` — cloudflared reaches this over the internal
+    # compose network at app:3000. Uncomment only to hit it directly from
+    # the LAN for debugging, then comment it back out.
     # ports:
     #   - "3000:3000"
 
-  # Keeps a free DuckDNS hostname (https://www.duckdns.org) pointed at your
-  # home IP, so nothing extra needs to run on the router even if the ISP
-  # reassigns your public IP. Not needed if you're using a paid domain
-  # through a registrar with its own DDNS support instead.
-  duckdns:
-    image: linuxserver/duckdns:latest
+  # The public front door. Authenticates to Cloudflare with a tunnel token
+  # (created in the Cloudflare dashboard under Zero Trust → Networks →
+  # Tunnels), then routes whatever public hostname you configured there to
+  # http://app:3000 over this compose network. TLS is terminated at
+  # Cloudflare's edge, so the app itself never handles a certificate.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
     restart: unless-stopped
-    environment:
-      SUBDOMAINS: ${DUCKDNS_SUBDOMAINS}
-      TOKEN: ${DUCKDNS_TOKEN}
-      TZ: Etc/UTC
-
-  # Reverse proxy + TLS. First run: visit http://<host>:81, log in with the
-  # default admin@example.com / changeme (change it immediately), then add a
-  # Proxy Host pointing your domain at "app" port 3000, with "Force SSL" and
-  # a Let's Encrypt certificate requested from its own UI.
-  npm:
-    image: jc21/nginx-proxy-manager:latest
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-      - "81:81"
-    volumes:
-      - npm_data:/data
-      - npm_letsencrypt:/etc/letsencrypt
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:?set this in .env}
     depends_on:
       - app
-
-volumes:
-  npm_data:
-  npm_letsencrypt:
