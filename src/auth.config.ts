@@ -39,6 +39,19 @@ export const authConfig = {
         return isLoggedIn;
       }
       if (isOnAuthPage && isLoggedIn) {
+        // A cookie can be cryptographically valid and still name a user that
+        // no longer exists — the row was deleted, or the database was swapped
+        // (dev fixtures re-seeded, a restore from backup). This check can't
+        // see that: it runs in the proxy, which has no database access, so
+        // `isLoggedIn` only means "the JWT verified".
+        //
+        // The pages *can* see it, and redirect here when the lookup misses.
+        // Without this guard the two disagree forever: the page bounces to
+        // /login because there's no user, and this bounces straight back
+        // because the cookie says there is — an infinite redirect the visitor
+        // cannot escape, since they can't reach the form that would replace
+        // the bad cookie. `stale` is that signal, so the form renders.
+        if (request.nextUrl.searchParams.has("stale")) return true;
         return Response.redirect(new URL("/", request.nextUrl));
       }
       return true;
