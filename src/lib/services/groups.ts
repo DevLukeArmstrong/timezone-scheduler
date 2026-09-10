@@ -1,6 +1,7 @@
 import { randomBytes } from "crypto";
 import { db, GroupRole, type Group } from "@/lib/db";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
+import { DiscordWebhookError, isDiscordWebhookUrl, sendDiscordMessage } from "@/lib/discord";
 
 const NAME_MAX_LENGTH = 60;
 
@@ -268,4 +269,65 @@ export async function regenerateInviteToken(groupId: string, actingUserId: strin
     where: { id: groupId },
     data: { inviteToken: generateInviteToken() },
   });
+}
+
+/**
+ * Sets (or, with `null`, clears) the Discord webhook this group's
+ * notifications post to. Callable by the group's OWNER or an existing
+ * ADMIN. Only the URL's shape is validated here — use
+ * {@link sendGroupDiscordTestMessage} to prove it actually reaches a
+ * channel. The stored value is never returned to the client; callers get
+ * a boolean via `hasDiscordWebhook`.
+ */
+export async function setGroupDiscordWebhook(
+  groupId: string,
+  actingUserId: string,
+  webhookUrl: string | null,
+): Promise<void> {
+  const group = await getGroupForAdmin(groupId, actingUserId);
+  if (!group) {
+    throw new ForbiddenError("Only the group owner or an admin can change notifications.");
+  }
+
+  const trimmed = webhookUrl?.trim() || null;
+  if (trimmed && !isDiscordWebhookUrl(trimmed)) {
+    throw new ValidationError(
+      "That doesn't look like a Discord webhook URL — it should start with https://discord.com/api/webhooks/.",
+    );
+  }
+
+  await db.group.update({
+    where: { id: groupId },
+    data: { discordWebhookUrl: trimmed },
+  });
+}
+
+/**
+ * Posts a "notifications are working" message to the group's channel so
+ * an admin can confirm the webhook end-to-end. Throws `ValidationError`
+ * with Discord's answer when it fails, which is the useful part.
+ */
+export async function sendGroupDiscordTestMessage(
+  groupId: string,
+  actingUserId: string,
+): Promise<void> {
+  const group = await getGroupForAdmin(groupId, actingUserId);
+  if (!group) {
+    throw new ForbiddenError("Only the group owner or an admin can change notifications.");
+  }
+  if (!group.discordWebhookUrl) {
+    throw new ValidationError("Save a webhook URL first.");
+  }
+
+  try {
+    await sendDiscordMessage(
+      group.discordWebhookUrl,
+      `✅ Timezone Scheduler is connected to **${group.name}**. Availability updates and reminders will show up here.`,
+    );
+  } catch (error) {
+    if (error instanceof DiscordWebhookError) {
+      throw new ValidationError(error.message);
+    }
+    throw error;
+  }
 }

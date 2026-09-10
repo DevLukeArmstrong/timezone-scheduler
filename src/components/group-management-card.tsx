@@ -2,6 +2,7 @@ import type { Group } from "@/lib/db";
 import type { GroupMemberSummary } from "@/lib/services/groups";
 import { GroupMemberList } from "@/components/group-member-list";
 import { InviteLinkCard } from "@/components/invite-link-card";
+import { DiscordWebhookCard } from "@/components/discord-webhook-card";
 
 interface GroupManagementCardProps {
   group: Group;
@@ -13,8 +14,13 @@ interface GroupManagementCardProps {
 
 /**
  * One group's management panel on `/groups`: its invite link (regenerable
- * by owners/admins) and its member list (promote/demote/remove for
- * owners/admins, read-only for everyone else).
+ * by owners/admins), its Discord connection, and its member list
+ * (promote/demote/remove for owners/admins, read-only for everyone else).
+ *
+ * This is a Server Component holding the full `Group` row, so it decides
+ * what reaches the client: `inviteToken` (already a shareable link) goes
+ * down; `discordWebhookUrl` (a channel-posting credential) never does —
+ * only whether one is set.
  */
 export function GroupManagementCard({
   group,
@@ -34,6 +40,12 @@ export function GroupManagementCard({
       </div>
 
       <InviteLinkCard groupId={group.id} inviteToken={group.inviteToken} isAdmin={viewerIsAdmin} />
+
+      <DiscordWebhookCard
+        groupId={group.id}
+        hasWebhook={group.discordWebhookUrl !== null}
+        isAdmin={viewerIsAdmin}
+      />
 
       <GroupMemberList
         groupId={group.id}

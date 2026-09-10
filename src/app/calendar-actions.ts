@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { auth } from "@/auth";
 import { getGroupForMember } from "@/lib/services/groups";
 import {
@@ -10,6 +11,10 @@ import {
   deleteAvailabilitySlot,
   deleteAvailabilitySlotsByBatch,
 } from "@/lib/services/availability";
+import {
+  announceNewAvailability,
+  type NewAvailabilityWindow,
+} from "@/lib/services/notifications";
 import { WEEKDAY_BITS } from "@/lib/recurrence";
 import {
   parseLocalDateString,
@@ -78,7 +83,10 @@ export async function addCalendarAvailabilitySlotAction(
 
   const batchId = crypto.randomUUID();
   const created: string[] = [];
+  const createdGroupIds: string[] = [];
   const failed: string[] = [];
+  // Set once the first copy is saved; the same window in every group.
+  let announced: NewAvailabilityWindow | null = null;
 
   if (mode === "recurring") {
     const startMinute = parseTimeToMinutes(String(formData.get("startTime") ?? ""));
@@ -104,26 +112,38 @@ export async function addCalendarAvailabilitySlotAction(
       return { error: "Please choose a time zone for the recurring rule." };
     }
 
+    const rule = {
+      timeZone: resolvedTimeZone,
+      startMinute,
+      endMinute,
+      daysOfWeek,
+      rangeStart,
+      rangeEnd,
+    };
+
     for (const group of authorized) {
       try {
-        await createRecurringAvailabilitySlot({
+        const slot = await createRecurringAvailabilitySlot({
           userId,
           groupId: group.id,
           batchId,
-          rule: {
-            timeZone: resolvedTimeZone,
-            startMinute,
-            endMinute,
-            daysOfWeek,
-            rangeStart,
-            rangeEnd,
-          },
+          rule,
         });
         created.push(group.name);
+        createdGroupIds.push(group.id);
+        announced ??= {
+          kind: "recurring",
+          rule,
+          firstStart: slot.startTime,
+          firstEnd: slot.endTime,
+        };
       } catch (error) {
         const early = handleCreateError(error, group.name, created, failed);
         if (early) {
-          if (created.length > 0) revalidatePath("/");
+          if (created.length > 0) {
+            revalidatePath("/");
+            announceAfterResponse(userId, createdGroupIds, announced);
+          }
           return early;
         }
       }
@@ -144,7 +164,7 @@ export async function addCalendarAvailabilitySlotAction(
 
     for (const group of authorized) {
       try {
-        await createAvailabilitySlotFromLocalTime({
+        const slot = await createAvailabilitySlotFromLocalTime({
           userId,
           start,
           end,
@@ -153,10 +173,15 @@ export async function addCalendarAvailabilitySlotAction(
           batchId,
         });
         created.push(group.name);
+        createdGroupIds.push(group.id);
+        announced ??= { kind: "one-off", startTime: slot.startTime, endTime: slot.endTime };
       } catch (error) {
         const early = handleCreateError(error, group.name, created, failed);
         if (early) {
-          if (created.length > 0) revalidatePath("/");
+          if (created.length > 0) {
+            revalidatePath("/");
+            announceAfterResponse(userId, createdGroupIds, announced);
+          }
           return early;
         }
       }
@@ -165,6 +190,7 @@ export async function addCalendarAvailabilitySlotAction(
 
   if (created.length > 0) {
     revalidatePath("/");
+    announceAfterResponse(userId, createdGroupIds, announced);
   }
 
   if (failed.length > 0) {
@@ -181,6 +207,20 @@ export async function addCalendarAvailabilitySlotAction(
   }
 
   return NO_ERROR;
+}
+
+/**
+ * Queues the Discord "<name> is free …" post to run once the response has
+ * gone out (`after()`), so the form never waits on Discord and a webhook
+ * failure can't turn a successful save into an error.
+ */
+function announceAfterResponse(
+  actorUserId: string,
+  groupIds: string[],
+  window: NewAvailabilityWindow | null,
+): void {
+  if (!window || groupIds.length === 0) return;
+  after(() => announceNewAvailability({ actorUserId, groupIds, window }));
 }
 
 /**

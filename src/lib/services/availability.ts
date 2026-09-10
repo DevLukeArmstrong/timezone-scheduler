@@ -434,20 +434,22 @@ export async function deleteAvailabilitySlotsByBatch(
 }
 
 /**
- * Whether a user has any availability — one-off or recurring, in any group
- * scope or the personal dashboard — overlapping `[windowStart, windowEnd)`.
- * Used by the weekly reminder job to decide who has nothing scheduled for
- * the upcoming week; shares the same expansion logic as the calendar views
- * and {@link assertNoOverlap} so results always agree with what a user sees
+ * Whether a user has any availability — one-off or recurring — overlapping
+ * `[windowStart, windowEnd)`. Pass `groupId` to ask about one group's
+ * scope only (the weekly reminder posts per group, so "did you add time
+ * for *this* group?" is the question); omit it to look across every scope.
+ * Shares the same expansion logic as the calendar views and
+ * {@link assertNoOverlap} so results always agree with what a user sees
  * on their own calendar.
  */
 export async function userHasAvailabilityInWindow(
   userId: string,
   windowStart: Date,
   windowEnd: Date,
+  groupId?: string,
 ): Promise<boolean> {
   const slots = await db.availabilitySlot.findMany({
-    where: { userId },
+    where: { userId, ...(groupId !== undefined ? { groupId } : {}) },
     include: { recurrence: true, exceptions: true },
   });
 

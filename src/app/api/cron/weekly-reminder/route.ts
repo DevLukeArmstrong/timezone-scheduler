@@ -1,18 +1,15 @@
 import { timingSafeEqual } from "crypto";
 import { sendWeeklyAvailabilityReminders } from "@/lib/services/reminders";
 
-// This app is self-hosted on Proxmox, not Vercel (see AGENTS.md/README) — so
-// there's no platform cron. This route is meant to be triggered externally,
-// e.g. a systemd timer or a cron entry on the Proxmox host:
+// Manual trigger for the weekly reminder. The scheduled run is the
+// in-process ticker in src/lib/services/scheduler.ts (Friday 15:00
+// Pacific/Auckland); this route exists so you can fire the job by hand —
+// after deploying, or to see what a group would be told right now — without
+// waiting for Friday. Idempotent: a group already reminded for the upcoming
+// week gets nothing (see NotificationLog dedupe), so it's safe to call twice.
 //
-//   # Fires at one fixed UTC instant chosen to land Thursday morning NZT
-//   # (Wednesday evening in Vancouver) — see sendWeeklyAvailabilityReminders.
-//   curl -fsS -X POST \
-//     -H "Authorization: Bearer $CRON_SECRET" \
-//     https://your-host/api/cron/weekly-reminder
+//   curl -fsS -X POST //     -H "Authorization: Bearer $CRON_SECRET" //     https://your-host/api/cron/weekly-reminder
 //
-// Same pattern will be reused by later scheduled jobs (Sessions 10 and 11)
-// under /api/cron/*.
 export async function POST(request: Request): Promise<Response> {
   const secret = process.env.CRON_SECRET;
   if (!secret) {
