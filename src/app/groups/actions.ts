@@ -11,6 +11,7 @@ import {
   removeMember,
   sendGroupDiscordTestMessage,
   setGroupDiscordWebhook,
+  setGroupQuorumThreshold,
 } from "@/lib/services/groups";
 import { ServiceError } from "@/lib/errors";
 
@@ -231,4 +232,30 @@ export async function sendDiscordTestMessageAction(
   }
 
   return { success: "Test message sent — check the channel." };
+}
+
+export async function setQuorumThresholdAction(
+  groupId: string,
+  _prevState: DiscordWebhookActionState,
+  formData: FormData,
+): Promise<DiscordWebhookActionState> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return { error: "Please sign in." };
+  }
+
+  const threshold = Number(formData.get("threshold"));
+
+  try {
+    await setGroupQuorumThreshold(groupId, userId, threshold);
+  } catch (error) {
+    if (error instanceof ServiceError) {
+      return { error: error.message };
+    }
+    throw error;
+  }
+
+  revalidatePath("/groups");
+  return { success: `You'll hear about it when ${threshold} or more are free together.` };
 }

@@ -4,8 +4,10 @@ import { useActionState } from "react";
 import {
   sendDiscordTestMessageAction,
   setDiscordWebhookAction,
+  setQuorumThresholdAction,
   type DiscordWebhookActionState,
 } from "@/app/groups/actions";
+import { MIN_QUORUM_THRESHOLD } from "@/lib/quorum";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 
 const initialState: DiscordWebhookActionState = {};
@@ -19,10 +21,15 @@ const initialState: DiscordWebhookActionState = {};
 export function DiscordWebhookCard({
   groupId,
   hasWebhook,
+  quorumThreshold,
+  memberCount,
   isAdmin,
 }: {
   groupId: string;
   hasWebhook: boolean;
+  /** How many members must be free together before the channel is told. */
+  quorumThreshold: number;
+  memberCount: number;
   /** Only the owner/admin can change this — enforced again server-side by
    * `setGroupDiscordWebhook` via `getGroupForAdmin`. */
   isAdmin: boolean;
@@ -35,6 +42,12 @@ export function DiscordWebhookCard({
     sendDiscordTestMessageAction.bind(null, groupId),
     initialState,
   );
+  const [thresholdState, thresholdFormAction, thresholdPending] = useActionState(
+    setQuorumThresholdAction.bind(null, groupId),
+    initialState,
+  );
+  const error = saveState.error ?? testState.error ?? thresholdState.error;
+  const success = saveState.success ?? testState.success ?? thresholdState.success;
 
   const inputClass =
     "w-full truncate rounded-lg border border-zinc-300 bg-zinc-50 px-2 py-1.5 text-xs text-zinc-600 placeholder:text-zinc-400 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
@@ -93,26 +106,43 @@ export function DiscordWebhookCard({
             </div>
           )}
 
-          {(saveState.error || testState.error) && (
-            <p className="text-xs text-red-600 dark:text-red-400">
-              {saveState.error ?? testState.error}
-            </p>
+          {hasWebhook && (
+            <form action={thresholdFormAction} className="flex items-center gap-1.5 text-xs text-zinc-600 dark:text-zinc-300">
+              <label htmlFor={`threshold-${groupId}`} className="shrink-0">
+                Post when at least
+              </label>
+              <input
+                id={`threshold-${groupId}`}
+                type="number"
+                name="threshold"
+                min={MIN_QUORUM_THRESHOLD}
+                step={1}
+                required
+                defaultValue={quorumThreshold}
+                className="w-14 rounded-lg border border-zinc-300 bg-zinc-50 px-2 py-1 text-center text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+              />
+              <span className="shrink-0">of {memberCount} are free together</span>
+              <button type="submit" disabled={thresholdPending} className={buttonClass}>
+                {thresholdPending ? "Saving…" : "Set"}
+              </button>
+            </form>
           )}
-          {(saveState.success || testState.success) && (
-            <p className="text-xs text-emerald-600 dark:text-emerald-400">
-              {saveState.success ?? testState.success}
-            </p>
+
+          {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+          {success && !error && (
+            <p className="text-xs text-emerald-600 dark:text-emerald-400">{success}</p>
           )}
 
           <p className="text-xs text-zinc-400 dark:text-zinc-500">
             In Discord: channel settings → Integrations → Webhooks → New Webhook → Copy URL.
-            Posts here when someone adds availability, plus a weekly reminder.
+            Posts here when someone adds availability, when enough of you are free at the
+            same time, plus a weekly reminder.
           </p>
         </>
       ) : (
         <p className="text-xs text-zinc-400 dark:text-zinc-500">
           {hasWebhook
-            ? "This group posts availability updates and reminders to a Discord channel."
+            ? `This group posts to a Discord channel when someone adds availability, when ${quorumThreshold} or more of you are free together, and with a weekly reminder.`
             : "An owner or admin can connect a Discord channel for availability updates."}
         </p>
       )}

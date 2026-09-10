@@ -2,6 +2,7 @@ import { randomBytes } from "crypto";
 import { db, GroupRole, type Group } from "@/lib/db";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/errors";
 import { DiscordWebhookError, isDiscordWebhookUrl, sendDiscordMessage } from "@/lib/discord";
+import { MIN_QUORUM_THRESHOLD } from "@/lib/quorum";
 
 const NAME_MAX_LENGTH = 60;
 
@@ -252,6 +253,25 @@ export async function removeMember(
   await db.groupMembership.delete({
     where: { groupId_userId: { groupId, userId: targetUserId } },
   });
+  await markGroupsQuorumDirty([groupId]);
+}
+
+/**
+ * Stamps `quorumDirtyAt` on each group so the scheduler re-evaluates its
+ * quorum after the debounce (src/lib/services/quorum.ts). Called from every
+ * path that changes who is free when in a group: slot create/delete,
+ * member removal, threshold or webhook changes. Nulls (personal-scope
+ * slots) and duplicates are ignored; never throws — a failed stamp just
+ * means a late alert, not a failed save.
+ */
+export async function markGroupsQuorumDirty(groupIds: Array<string | null>): Promise<void> {
+  const ids = [...new Set(groupIds.filter((id): id is string => id !== null))];
+  if (ids.length === 0) return;
+  try {
+    await db.group.updateMany({ where: { id: { in: ids } }, data: { quorumDirtyAt: new Date() } });
+  } catch (error) {
+    console.error("Couldn't mark groups for quorum re-evaluation:", error);
+  }
 }
 
 /**
@@ -300,6 +320,32 @@ export async function setGroupDiscordWebhook(
     where: { id: groupId },
     data: { discordWebhookUrl: trimmed },
   });
+  // A newly connected channel gets told about every quorum currently on
+  // the calendar; clearing the webhook has nothing to evaluate.
+  if (trimmed) await markGroupsQuorumDirty([groupId]);
+}
+
+/**
+ * Sets how many members must be free together before the group's channel
+ * hears about it. Callable by the group's OWNER or an existing ADMIN.
+ * Lowering it can surface windows that already exist, so the group is
+ * marked for re-evaluation.
+ */
+export async function setGroupQuorumThreshold(
+  groupId: string,
+  actingUserId: string,
+  threshold: number,
+): Promise<void> {
+  const group = await getGroupForAdmin(groupId, actingUserId);
+  if (!group) {
+    throw new ForbiddenError("Only the group owner or an admin can change notifications.");
+  }
+  if (!Number.isInteger(threshold) || threshold < MIN_QUORUM_THRESHOLD) {
+    throw new ValidationError(`The free-together threshold must be a whole number of at least ${MIN_QUORUM_THRESHOLD}.`);
+  }
+
+  await db.group.update({ where: { id: groupId }, data: { quorumThreshold: threshold } });
+  await markGroupsQuorumDirty([groupId]);
 }
 
 /**
