@@ -44,6 +44,8 @@ export function GroupManagementCard({
       <DiscordWebhookCard
         groupId={group.id}
         hasWebhook={group.discordWebhookUrl !== null}
+        quorumThreshold={group.quorumThreshold}
+        memberCount={members.length}
         isAdmin={viewerIsAdmin}
       />
 

@@ -1,5 +1,6 @@
 import { db, Prisma, type AvailabilitySlot } from "@/lib/db";
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
+import { markGroupsQuorumDirty } from "@/lib/services/groups";
 import {
   assertValidRecurrenceRule,
   expandRecurrenceRule,
@@ -52,9 +53,11 @@ export async function createAvailabilitySlot(
   await assertUserAndGroup(input.userId, groupId);
   await assertNoOverlap(input.userId, groupId, startTime, endTime);
 
-  return db.availabilitySlot.create({
+  const slot = await db.availabilitySlot.create({
     data: { userId: input.userId, groupId, batchId, startTime, endTime },
   });
+  await markGroupsQuorumDirty([groupId]);
+  return slot;
 }
 
 export interface CreateAvailabilitySlotFromLocalTimeInput {
@@ -173,7 +176,7 @@ export async function createRecurringAvailabilitySlot(
     );
   }
 
-  return db.availabilitySlot.create({
+  const slot = await db.availabilitySlot.create({
     data: {
       userId: input.userId,
       groupId,
@@ -196,6 +199,8 @@ export async function createRecurringAvailabilitySlot(
       },
     },
   });
+  await markGroupsQuorumDirty([groupId]);
+  return slot;
 }
 
 const GROUP_SLOT_OWNER_SELECT = {
@@ -356,14 +361,17 @@ export async function deleteAvailabilitySlot(
   userId: string,
   slotId: string,
 ): Promise<void> {
-  const { count } = await db.availabilitySlot.deleteMany({
+  const slot = await db.availabilitySlot.findFirst({
     where: { id: slotId, userId },
+    select: { groupId: true },
   });
-  if (count === 0) {
+  if (!slot) {
     throw new NotFoundError(
       `No availability slot found with id "${slotId}" for this user.`,
     );
   }
+  await db.availabilitySlot.delete({ where: { id: slotId } });
+  await markGroupsQuorumDirty([slot.groupId]);
 }
 
 /**
@@ -408,6 +416,7 @@ export async function deleteAvailabilityOccurrence(
     },
     update: {},
   });
+  await markGroupsQuorumDirty([slot.groupId]);
 }
 
 /**
@@ -423,14 +432,17 @@ export async function deleteAvailabilitySlotsByBatch(
     throw new ValidationError("batchId is required.");
   }
 
-  const { count } = await db.availabilitySlot.deleteMany({
+  const slots = await db.availabilitySlot.findMany({
     where: { batchId, userId },
+    select: { groupId: true },
   });
-  if (count === 0) {
+  if (slots.length === 0) {
     throw new NotFoundError(
       `No availability slots found for batch "${batchId}" for this user.`,
     );
   }
+  await db.availabilitySlot.deleteMany({ where: { batchId, userId } });
+  await markGroupsQuorumDirty(slots.map((slot) => slot.groupId));
 }
 
 /**

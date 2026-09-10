@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "crypto";
+import { authorizeCronRequest } from "@/lib/cron-auth";
 import { sendWeeklyAvailabilityReminders } from "@/lib/services/reminders";
 
 // Manual trigger for the weekly reminder. The scheduled run is the
@@ -8,28 +8,14 @@ import { sendWeeklyAvailabilityReminders } from "@/lib/services/reminders";
 // waiting for Friday. Idempotent: a group already reminded for the upcoming
 // week gets nothing (see NotificationLog dedupe), so it's safe to call twice.
 //
-//   curl -fsS -X POST //     -H "Authorization: Bearer $CRON_SECRET" //     https://your-host/api/cron/weekly-reminder
+//   curl -fsS -X POST \
+//     -H "Authorization: Bearer $CRON_SECRET" \
+//     https://your-host/api/cron/weekly-reminder
 //
 export async function POST(request: Request): Promise<Response> {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) {
-    console.error("CRON_SECRET is not configured — refusing to run the weekly reminder job.");
-    return Response.json({ error: "Not configured" }, { status: 500 });
-  }
-
-  const provided = request.headers.get("authorization") ?? "";
-  if (!isAuthorized(provided, `Bearer ${secret}`)) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = authorizeCronRequest(request);
+  if (denied) return denied;
 
   const summary = await sendWeeklyAvailabilityReminders();
   return Response.json(summary);
-}
-
-/** Constant-time comparison so the shared secret can't be brute-forced via timing. */
-function isAuthorized(provided: string, expected: string): boolean {
-  const providedBuf = Buffer.from(provided);
-  const expectedBuf = Buffer.from(expected);
-  if (providedBuf.length !== expectedBuf.length) return false;
-  return timingSafeEqual(providedBuf, expectedBuf);
 }

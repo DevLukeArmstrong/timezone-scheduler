@@ -165,6 +165,15 @@ model Group {
   /// post to the channel — so it is never sent to the client, only a
   /// "configured or not" boolean (see `GroupManagementCard`).
   discordWebhookUrl String?
+  /// How many members must be free at the same time before the group's
+  /// channel gets a "N of you are free" post. Admin-editable; min 2.
+  quorumThreshold Int @default(3)
+  /// Set whenever availability in this group changes (slot added/removed,
+  /// member removed, threshold changed). The scheduler re-evaluates quorum
+  /// for a group once this is a couple of minutes old — so a burst of edits
+  /// is one evaluation, not one per keystroke — then clears it. Null means
+  /// nothing has changed since the last evaluation.
+  quorumDirtyAt DateTime? @db.Timestamptz
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -172,6 +181,33 @@ model Group {
   memberships       GroupMembership[]
   availabilitySlots AvailabilitySlot[]
   notificationLogs  NotificationLog[]
+  quorumAlerts      QuorumAlert[]
+}
+
+/// A quorum window the group has already been told about. This is what
+/// stops the "4 of you are free Friday" post from firing again every time
+/// someone nudges a slot: on each evaluation a freshly computed window that
+/// overlaps a stored alert in time and shares at least `quorumThreshold`
+/// members with it is *the same quorum* — the row is updated to the new
+/// bounds and nothing is posted. Rows are only removed once `endTime` has
+/// passed, never when the quorum temporarily collapses, so delete-then-
+/// re-add hours apart stays silent too. See src/lib/services/quorum.ts.
+model QuorumAlert {
+  id        String   @id @default(cuid())
+  groupId   String
+  /// Sorted user ids of everyone free for the whole window.
+  memberIds String[]
+  startTime DateTime @db.Timestamptz
+  endTime   DateTime @db.Timestamptz
+  /// True once the post has said "all N of you" — an upgrade from a partial
+  /// quorum to everyone is worth one more post, but only one.
+  everyone  Boolean  @default(false)
+  sentAt    DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([groupId, endTime])
 }
 
 /// A member's standing within one group. OWNER is unique per group (the

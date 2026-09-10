@@ -1,3 +1,4 @@
+import { evaluateDirtyGroupQuorums } from "@/lib/services/quorum";
 import {
   REMINDER_TIME_ZONE,
   sendWeeklyAvailabilityReminders,
@@ -43,6 +44,18 @@ export function isWeeklyReminderDue(now: Date): boolean {
 
 /** One tick: run whichever jobs are due. Exported for tests and manual triggers. */
 export async function runScheduledJobs(now: Date = new Date()): Promise<void> {
+  // Quorum first: it's the job people are waiting on after adding a slot,
+  // and it's usually a no-op (no dirty groups). Each job is isolated so a
+  // failure in one never blocks the other.
+  try {
+    const quorum = await evaluateDirtyGroupQuorums(now);
+    if (quorum.postsSent > 0 || quorum.failed > 0) {
+      console.log("Quorum alerts:", quorum);
+    }
+  } catch (error) {
+    console.error("Quorum evaluation failed:", error);
+  }
+
   if (isWeeklyReminderDue(now)) {
     const summary = await sendWeeklyAvailabilityReminders(now);
     if (summary.postsSent > 0 || summary.failed > 0) {
@@ -80,5 +93,7 @@ export function startScheduler(): void {
   // Don't keep the process alive just for the timer — lets `next start`
   // exit cleanly on SIGTERM instead of waiting out the interval.
   globalForScheduler.schedulerTimer.unref?.();
-  console.log(`Scheduler started (tick every ${TICK_MS / 1000}s; reminders on Friday 15:00 ${REMINDER_TIME_ZONE}).`);
+  console.log(
+    `Scheduler started (tick every ${TICK_MS / 1000}s; quorum alerts after a 2-minute debounce; reminders on Friday 15:00 ${REMINDER_TIME_ZONE}).`,
+  );
 }
