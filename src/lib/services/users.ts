@@ -20,6 +20,8 @@ const PUBLIC_USER_SELECT = {
   notifyReminder: true,
   notifyOverlap: true,
   notifyNewAvailability: true,
+  peakStartHour: true,
+  peakEndHour: true,
 } satisfies { [K in keyof PublicUser]: true };
 
 export interface CreateUserInput {
@@ -194,6 +196,50 @@ export async function updateNotificationPreferences(
     return await db.user.update({
       where: { id: userId },
       data: preferences,
+      select: PUBLIC_USER_SELECT,
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2025"
+    ) {
+      throw new NotFoundError(`No user found with id "${userId}".`);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Sets the hours the week grid renders at full height. Bounds are validated
+ * here rather than trusted from the form: `end` is exclusive and may be 24
+ * ("through midnight"), the band must be at least an hour wide, and both must
+ * be whole hours inside the day — the grid's hour scale indexes rows by
+ * integer hour, so a fractional or out-of-range bound would produce a broken
+ * column rather than a merely odd-looking one.
+ */
+export async function updatePeakHours(
+  userId: string,
+  peakStartHour: number,
+  peakEndHour: number,
+): Promise<PublicUser> {
+  const isWholeHour = (value: number) => Number.isInteger(value);
+  if (!isWholeHour(peakStartHour) || !isWholeHour(peakEndHour)) {
+    throw new ValidationError("Peak hours must be whole hours.");
+  }
+  if (peakStartHour < 0 || peakStartHour > 23) {
+    throw new ValidationError("Peak start must be between 12 AM and 11 PM.");
+  }
+  if (peakEndHour < 1 || peakEndHour > 24) {
+    throw new ValidationError("Peak end must be between 1 AM and midnight.");
+  }
+  if (peakEndHour <= peakStartHour) {
+    throw new ValidationError("Peak end must be later than peak start.");
+  }
+
+  try {
+    return await db.user.update({
+      where: { id: userId },
+      data: { peakStartHour, peakEndHour },
       select: PUBLIC_USER_SELECT,
     });
   } catch (error) {

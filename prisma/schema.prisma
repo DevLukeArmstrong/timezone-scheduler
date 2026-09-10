@@ -36,6 +36,14 @@ model User {
   /// Emails when another group member adds new availability.
   notifyNewAvailability Boolean @default(true)
 
+  /// The hours the week grid renders at full height. Hours outside this band
+  /// are compressed to a thin strip rather than hidden, so the whole day is
+  /// always represented. `peakEndHour` is exclusive, and 24 means "through
+  /// midnight". Defaults match DEFAULT_PEAK_START_HOUR/END_HOUR in
+  /// src/lib/calendar.ts.
+  peakStartHour Int @default(9)
+  peakEndHour   Int @default(24)
+
   availabilitySlots   AvailabilitySlot[]
   ownedGroups         Group[]
   groupMemberships    GroupMembership[]

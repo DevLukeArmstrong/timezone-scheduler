@@ -1,0 +1,42 @@
+# Local development database ONLY. Never deployed anywhere.
+#
+# The production stack (docker-compose.yml) deliberately contains no Postgres
+# service — production talks to the `postgres-db` LXC (CT 101, 10.0.0.195).
+# This file is the local stand-in for it, so that `npm run dev`, migrations,
+# and throwaway test data never touch real user data.
+#
+# It runs the same engine as production so migrations and the Postgres-only
+# column types in schema.prisma (@db.Timestamptz, @db.Date) behave identically.
+#
+# Deliberately published on host port 5433, not 5432: production is on 5432,
+# and a one-character difference in a connection string should not be the only
+# thing standing between a dev migration and the live database.
+#
+# Usage:
+#   docker compose -f docker-compose.dev.yml up -d     # start
+#   npx prisma migrate deploy                          # apply migrations
+#   docker compose -f docker-compose.dev.yml down      # stop (keeps data)
+#   docker compose -f docker-compose.dev.yml down -v   # stop and wipe data
+
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: scheduler_user
+      # Local-only throwaway credential. This database is not reachable from
+      # outside this machine and holds nothing but development fixtures.
+      POSTGRES_PASSWORD: devpassword
+      POSTGRES_DB: timezone_scheduler_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - dev-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scheduler_user -d timezone_scheduler_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  dev-db-data:

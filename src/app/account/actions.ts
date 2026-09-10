@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import {
   updateNotificationPreferences,
+  updatePeakHours,
   updateUserName,
   updateUserPassword,
 } from "@/lib/services/users";
@@ -101,8 +102,8 @@ export async function updateFavoriteTimeZonesAction(
     throw error;
   }
 
-  // The calendar's availability form also reads this list, on a different route.
-  revalidatePath("/calendar");
+  // The calendar’s availability form also reads this list, on a different route.
+  revalidatePath("/");
   return { success: true };
 }
 
@@ -135,5 +136,38 @@ export async function updateNotificationPreferencesAction(
     throw error;
   }
 
+  return { success: true };
+}
+
+export interface UpdatePeakHoursActionState {
+  error?: string;
+  success?: boolean;
+}
+
+export async function updatePeakHoursAction(
+  _prevState: UpdatePeakHoursActionState,
+  formData: FormData,
+): Promise<UpdatePeakHoursActionState> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return { error: "You must be signed in." };
+  }
+
+  const peakStartHour = Number(formData.get("peakStartHour"));
+  const peakEndHour = Number(formData.get("peakEndHour"));
+
+  try {
+    await updatePeakHours(userId, peakStartHour, peakEndHour);
+  } catch (error) {
+    if (error instanceof ServiceError) {
+      return { error: error.message };
+    }
+    throw error;
+  }
+
+  // The week grid's row heights are derived from these, so the calendar has
+  // to re-render — it's a different route from this form.
+  revalidatePath("/");
   return { success: true };
 }

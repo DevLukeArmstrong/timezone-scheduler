@@ -12,6 +12,17 @@ const nextConfig: NextConfig = {
   // though the current front door is a Cloudflare tunnel rather than nginx:
   // it's inert where nothing reads it, and correct again the moment a
   // reverse proxy is reintroduced.
+  // The calendar used to live at /calendar and now sits at the root, so the
+  // bare domain opens the app. Existing bookmarks, the weekly reminder
+  // emails already sent, and invite links shared before the move all still
+  // point at /calendar — 308 them to `/`, preserving any query string
+  // (`?view=`, `?date=`, `?groups=`), which `redirects` does automatically.
+  async redirects() {
+    return [
+      { source: "/calendar", destination: "/", permanent: true },
+      { source: "/calendar/:path*", destination: "/", permanent: true },
+    ];
+  },
   async headers() {
     return [
       {

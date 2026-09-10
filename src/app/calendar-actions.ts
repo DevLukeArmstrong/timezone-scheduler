@@ -123,7 +123,7 @@ export async function addCalendarAvailabilitySlotAction(
       } catch (error) {
         const early = handleCreateError(error, group.name, created, failed);
         if (early) {
-          if (created.length > 0) revalidatePath("/calendar");
+          if (created.length > 0) revalidatePath("/");
           return early;
         }
       }
@@ -156,7 +156,7 @@ export async function addCalendarAvailabilitySlotAction(
       } catch (error) {
         const early = handleCreateError(error, group.name, created, failed);
         if (early) {
-          if (created.length > 0) revalidatePath("/calendar");
+          if (created.length > 0) revalidatePath("/");
           return early;
         }
       }
@@ -164,7 +164,7 @@ export async function addCalendarAvailabilitySlotAction(
   }
 
   if (created.length > 0) {
-    revalidatePath("/calendar");
+    revalidatePath("/");
   }
 
   if (failed.length > 0) {
@@ -193,7 +193,7 @@ export async function deleteCalendarAvailabilitySlotAction(slotId: string): Prom
   if (!userId) return;
 
   await deleteAvailabilitySlot(userId, slotId);
-  revalidatePath("/calendar");
+  revalidatePath("/");
 }
 
 /**
@@ -209,7 +209,7 @@ export async function deleteCalendarAvailabilityOccurrenceAction(
   if (!userId) return;
 
   await deleteAvailabilityOccurrence(userId, slotId, occurrenceDate);
-  revalidatePath("/calendar");
+  revalidatePath("/");
 }
 
 /**
@@ -224,7 +224,7 @@ export async function deleteCalendarAvailabilityBatchAction(
   if (!userId) return;
 
   await deleteAvailabilitySlotsByBatch(userId, batchId);
-  revalidatePath("/calendar");
+  revalidatePath("/");
 }
 
 function parseDaysOfWeek(formData: FormData): number | null {

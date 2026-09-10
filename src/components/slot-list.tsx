@@ -9,7 +9,7 @@ import {
 import {
   deleteCalendarAvailabilityBatchAction,
   deleteCalendarAvailabilitySlotAction,
-} from "@/app/calendar/actions";
+} from "@/app/calendar-actions";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;

@@ -5,6 +5,7 @@ import {
   endOfMonth,
   endOfWeek,
   format,
+  isSameDay,
   startOfMonth,
   startOfWeek,
   startOfYear,
@@ -24,6 +25,42 @@ import {
 /** The calendar grid always spans the full day; slots can start/end at any hour. */
 export const GRID_START_HOUR = 0;
 export const GRID_END_HOUR = 24;
+
+/**
+ * The default "peak" band — the hours the week grid gives full row height to.
+ * Everything outside it is compressed to a thin strip rather than hidden, so
+ * the whole 24 hours stay on screen and on the same continuous scale (see
+ * `buildHourScale` in calendar-grid.tsx). Per-user overrides live on
+ * `User.peakStartHour` / `User.peakEndHour`.
+ *
+ * `PEAK_END_HOUR` is exclusive and may equal 24, meaning "through midnight".
+ */
+export const DEFAULT_PEAK_START_HOUR = 9;
+export const DEFAULT_PEAK_END_HOUR = 24;
+
+/**
+ * Clamps untrusted peak-hour bounds (a stored preference or a form value) to
+ * something the grid can render: whole hours, inside the day, and at least
+ * one hour wide. A start at or after the end is nonsensical, so it falls back
+ * to the defaults rather than producing an empty or inverted band.
+ */
+export function resolvePeakHours(
+  startHour: number | null | undefined,
+  endHour: number | null | undefined,
+): { peakStartHour: number; peakEndHour: number } {
+  const start = Number.isInteger(startHour) ? (startHour as number) : DEFAULT_PEAK_START_HOUR;
+  const end = Number.isInteger(endHour) ? (endHour as number) : DEFAULT_PEAK_END_HOUR;
+  const safeStart = Math.min(Math.max(start, GRID_START_HOUR), GRID_END_HOUR - 1);
+  const safeEnd = Math.min(Math.max(end, GRID_START_HOUR + 1), GRID_END_HOUR);
+  if (safeEnd <= safeStart) {
+    return {
+      peakStartHour: DEFAULT_PEAK_START_HOUR,
+      peakEndHour: DEFAULT_PEAK_END_HOUR,
+    };
+  }
+  return { peakStartHour: safeStart, peakEndHour: safeEnd };
+}
+
 export const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 export const MONTH_LABELS = [
   "January",
@@ -43,7 +80,6 @@ export const MONTH_LABELS = [
 export const CALENDAR_VIEWS = ["week", "month", "year"] as const;
 export type CalendarView = (typeof CALENDAR_VIEWS)[number];
 
-const GRID_SPAN_HOURS = GRID_END_HOUR - GRID_START_HOUR;
 const MS_PER_HOUR = 1000 * 60 * 60;
 const DATE_PARAM_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
@@ -56,34 +92,6 @@ export function getWeekDays(
   const now = TZDate.tz(timeZone, reference.getTime());
   const monday = startOfWeek(now, { weekStartsOn: 1 });
   return Array.from({ length: 7 }, (_, i) => addDays(monday, i) as TZDate);
-}
-
-/** Hour the week grid falls back to when "now" isn't a sensible auto-scroll target. */
-const FALLBACK_SCROLL_HOUR = 10;
-/** Sensible daytime range (inclusive start, exclusive end) for auto-scrolling to the viewer's current hour. */
-const SCROLL_TO_NOW_START_HOUR = 8;
-const SCROLL_TO_NOW_END_HOUR = 23;
-
-/**
- * Picks which hour the week grid's scrollable container should open on. When
- * `weekDays` is the week containing `now` and the viewer's current local hour
- * falls within a sensible daytime range, scrolls to roughly that hour so the
- * grid opens on "now". Otherwise — a different week, or the current hour is
- * late night/very early morning — falls back to a fixed mid-morning hour
- * rather than landing somewhere unhelpful.
- */
-export function resolveGridScrollHour(
-  weekDays: Date[],
-  timeZone: string,
-  now: Date = new Date(),
-): number {
-  const isCurrentWeek = weekDays[0].getTime() === getWeekDays(timeZone, now)[0].getTime();
-  if (!isCurrentWeek) return FALLBACK_SCROLL_HOUR;
-
-  const currentHour = utcToWallClock(now, timeZone).getHours();
-  const isSensibleDaytime =
-    currentHour >= SCROLL_TO_NOW_START_HOUR && currentHour < SCROLL_TO_NOW_END_HOUR;
-  return isSensibleDaytime ? currentHour : FALLBACK_SCROLL_HOUR;
 }
 
 /**
@@ -138,6 +146,41 @@ export function resolveCalendarView(
   const value = Array.isArray(viewParam) ? viewParam[0] : viewParam;
   if (value === "month" || value === "year" || value === "week") return value;
   return "week";
+}
+
+/**
+ * Validates an untrusted `?day=` search param — an index into the visible
+ * week (0 = Monday), used only by the phone-width single-day grid.
+ *
+ * With no param, prefers today when it falls inside `weekDays`, so opening
+ * the calendar on a phone lands on the day the viewer is actually in rather
+ * than always on Monday.
+ */
+export function resolveWeekDayIndex(
+  dayParam: string | string[] | undefined,
+  weekDays: Date[],
+  timeZone: string,
+  now: Date = new Date(),
+): number {
+  const value = Array.isArray(dayParam) ? dayParam[0] : dayParam;
+  if (value !== undefined && /^[0-6]$/.test(value)) return Number(value);
+
+  const today = utcToWallClock(now, timeZone);
+  const index = weekDays.findIndex((day) => isSameDay(day, today));
+  return index === -1 ? 0 : index;
+}
+
+/**
+ * True when `?hours=all` asks for every hour at full row height instead of
+ * compressing the off-peak band. A link rather than client state, so the
+ * choice survives navigation and works with JavaScript disabled — the same
+ * pattern the group filter and view switcher use.
+ */
+export function resolveExpandedHours(
+  hoursParam: string | string[] | undefined,
+): boolean {
+  const value = Array.isArray(hoursParam) ? hoursParam[0] : hoursParam;
+  return value === "all";
 }
 
 /**
@@ -351,8 +394,17 @@ export function withExtraQuery(href: string, extraQuery: string | undefined): st
 export interface PositionedGroupSlot {
   occurrence: AvailabilityOccurrence;
   dayIndex: number;
-  topPercent: number;
-  heightPercent: number;
+  /**
+   * Fractional hours since local midnight on `dayIndex`, already clipped to
+   * `[GRID_START_HOUR, GRID_END_HOUR]`.
+   *
+   * Deliberately hours rather than percentages: the grid no longer gives
+   * every hour the same height (off-peak hours are compressed), so vertical
+   * position isn't a fixed fraction of the day. Converting hours to pixels is
+   * the renderer's job — see `buildHourScale` in calendar-grid.tsx.
+   */
+  startHour: number;
+  endHour: number;
   label: string;
   /** 0-based column this slot renders in, among others that overlap it in time on the same day. */
   lane: number;
@@ -394,13 +446,7 @@ export function layoutGroupSlotsForWeek(
       );
       if (endHour <= startHour) return;
 
-      clipped.push({
-        occurrence,
-        dayIndex,
-        topPercent: ((startHour - GRID_START_HOUR) / GRID_SPAN_HOURS) * 100,
-        heightPercent: ((endHour - startHour) / GRID_SPAN_HOURS) * 100,
-        label,
-      });
+      clipped.push({ occurrence, dayIndex, startHour, endHour, label });
     });
   }
 
@@ -416,24 +462,25 @@ export function layoutGroupSlotsForWeek(
 
   const positioned: PositionedGroupSlot[] = [];
   for (const entries of byDay.values()) {
-    entries.sort((a, b) => a.topPercent - b.topPercent);
+    entries.sort((a, b) => a.startHour - b.startHour);
 
     // Greedy interval-graph coloring: each slot takes the lowest-numbered
-    // lane whose most recent occupant has already ended.
-    const laneEndPercents: number[] = [];
+    // lane whose most recent occupant has already ended. Comparing hours
+    // rather than percentages is the same ordering — both are monotonic in
+    // time — just without the day-fraction conversion.
+    const laneEndHours: number[] = [];
     const withLanes = entries.map((entry) => {
-      const entryEndPercent = entry.topPercent + entry.heightPercent;
-      let lane = laneEndPercents.findIndex((end) => end <= entry.topPercent);
+      let lane = laneEndHours.findIndex((end) => end <= entry.startHour);
       if (lane === -1) {
-        lane = laneEndPercents.length;
-        laneEndPercents.push(entryEndPercent);
+        lane = laneEndHours.length;
+        laneEndHours.push(entry.endHour);
       } else {
-        laneEndPercents[lane] = entryEndPercent;
+        laneEndHours[lane] = entry.endHour;
       }
       return { entry, lane };
     });
 
-    const laneCount = laneEndPercents.length;
+    const laneCount = laneEndHours.length;
     for (const { entry, lane } of withLanes) {
       positioned.push({ ...entry, lane, laneCount });
     }

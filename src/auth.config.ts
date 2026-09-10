@@ -19,7 +19,9 @@ export const authConfig = {
     authorized({ auth, request }) {
       const isLoggedIn = !!auth?.user;
       const { pathname } = request.nextUrl;
-      const isOnCalendar = pathname.startsWith("/calendar");
+      // The calendar is the app's root route — there is no public landing
+      // page, so `/` is gated exactly like /groups and /account.
+      const isOnCalendar = pathname === "/";
       // Covers /groups AND /groups/join/[token] — the invite-link route
       // deliberately gets no special-case here. Returning `false` makes
       // Auth.js redirect to `/login` with a `callbackUrl` pointing right
@@ -37,7 +39,7 @@ export const authConfig = {
         return isLoggedIn;
       }
       if (isOnAuthPage && isLoggedIn) {
-        return Response.redirect(new URL("/calendar", request.nextUrl));
+        return Response.redirect(new URL("/", request.nextUrl));
       }
       return true;
     },

@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 
-const DEFAULT_REDIRECT = "/calendar";
+const DEFAULT_REDIRECT = "/";
 
 /**
  * Validates a user-supplied redirect target (a `callbackUrl` form field or
