@@ -79,7 +79,7 @@ export default async function CalendarPage({
   const session = await auth();
   const user = session?.user?.id ? await getUserById(session.user.id) : null;
   if (!user) {
-    redirect("/login");
+    redirect("/login?stale=1");
   }
 
   const {
@@ -95,7 +95,10 @@ export default async function CalendarPage({
   // Prefer `date`; fall back to legacy `week=` so old links keep working.
   const reference = resolveDateReference(dateParam ?? weekParam, user.timezone);
 
-  const allGroups = await listGroupsForUser(user.id);
+  // Only id/name leave the server: the full row carries `inviteToken` and
+  // `discordWebhookUrl`, and whatever is passed as a prop to a Client
+  // Component below is serialized into every member's page.
+  const allGroups = (await listGroupsForUser(user.id)).map(({ id, name }) => ({ id, name }));
   const allGroupIds = allGroups.map((group) => group.id);
   const requestedIds = resolveGroupIdsParam(groupsParam, allGroupIds);
 

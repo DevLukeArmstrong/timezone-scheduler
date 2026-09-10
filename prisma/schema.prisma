@@ -29,11 +29,18 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  /// Upcoming-availability reminder emails.
+  /// Group notifications go to a shared Discord channel, so "opting out"
+  /// can't hide a post from one person — these flags control whether the
+  /// user is *named* in a post (reminder, overlap) or whether their own
+  /// action triggers one (new availability). Email is only ever used for
+  /// password reset, which has no preference.
+  ///
+  /// Name me in the weekly "add your availability" reminder when I haven't.
   notifyReminder Boolean @default(true)
-  /// Emails when a new slot overlaps with someone else's in a shared group.
+  /// Name me in quorum ("N of you are free …") alerts. Off still counts me
+  /// toward the quorum — the others need to know — it just doesn't call me out.
   notifyOverlap Boolean @default(true)
-  /// Emails when another group member adds new availability.
+  /// Announce it to the group's channel when I add availability.
   notifyNewAvailability Boolean @default(true)
 
   /// The hours the week grid renders at full height. Hours outside this band
@@ -153,6 +160,11 @@ model Group {
   /// Opaque, unguessable join token — the invite link is `/groups/join/<inviteToken>`.
   /// Never derived from `id`, so knowing a group's id doesn't let you join it.
   inviteToken String   @unique
+  /// Discord incoming-webhook URL for this group's channel; null means the
+  /// group gets no Discord posts. A bearer credential — anyone holding it can
+  /// post to the channel — so it is never sent to the client, only a
+  /// "configured or not" boolean (see `GroupManagementCard`).
+  discordWebhookUrl String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -187,31 +199,31 @@ model GroupMembership {
   @@index([userId])
 }
 
-/// Matches the three `User.notify*` preference booleans — one variant per
-/// notification email a background job can send.
+/// One variant per notification a background job can send. REMINDER is
+/// logged per group (the weekly Discord post); the others are reserved for
+/// the quorum/new-availability jobs.
 enum NotificationType {
   REMINDER
   OVERLAP
   NEW_AVAILABILITY
 }
 
-/// One row per notification email actually sent. `dedupeKey` is what makes
+/// One row per notification actually sent. `dedupeKey` is what makes
 /// sending idempotent — a job checks for an existing row with the key it's
-/// about to use (e.g. "reminder:<userId>:<isoWeekStart>") before sending,
+/// about to use (e.g. "reminder:<groupId>:<isoWeekStart>") before sending,
 /// so retries/overlapping runs never double-send the same notification.
-/// Written by future sessions' reminder/digest jobs, not by anything in this
-/// one.
 model NotificationLog {
   id        String           @id @default(cuid())
   type      NotificationType
-  userId    String
-  /// Set for group-scoped notifications (e.g. overlap/new-availability); null
-  /// for purely personal ones (e.g. a reminder about the user's own slots).
+  /// Set for notifications about one person; null for a group-wide post
+  /// (the weekly reminder is one message per group, not per member).
+  userId    String?
+  /// Set for group-scoped notifications; null for purely personal ones.
   groupId   String?
   sentAt    DateTime         @default(now())
   dedupeKey String           @unique
 
-  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user  User?  @relation(fields: [userId], references: [id], onDelete: Cascade)
   group Group? @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
   @@index([userId])
