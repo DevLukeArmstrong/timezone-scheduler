@@ -10,17 +10,16 @@ export interface SendEmailInput {
 }
 
 /**
- * Thin wrapper around the Resend client — all outbound email (notifications,
- * password reset) goes through this one function. Callers build the
- * HTML/text bodies themselves; see the `*Email()` functions below for the
- * plain-string templates, one per email type. No templating engine — just
- * functions that return strings, per AGENTS.md's "don't build more than the
- * task needs."
+ * Thin wrapper around the Resend client. Email is used for exactly one
+ * thing: the password reset link, which has to reach one specific person
+ * privately and must work when they're locked out. Everything group-wide
+ * goes to Discord instead (src/lib/discord.ts). Callers build the
+ * HTML/text bodies themselves; see `passwordResetEmail()` below.
  *
  * Email is optional deployment config, not a hard requirement — without
  * RESEND_API_KEY/EMAIL_FROM set, this skips sending and logs why, instead of
- * throwing, so flows like forgot-password degrade to "works, just doesn't
- * email a link" rather than a 500. Setting both later needs no code change.
+ * throwing, so forgot-password degrades to "works, just doesn't email a
+ * link" rather than a 500. Setting both later needs no code change.
  */
 export async function sendEmail({ to, subject, html, text }: SendEmailInput): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
@@ -51,36 +50,6 @@ export function passwordResetEmail(resetUrl: string): { subject: string; html: s
     <p>We received a request to reset your Timezone Scheduler password.</p>
     <p><a href="${resetUrl}">Choose a new password</a></p>
     <p>This link expires in 1 hour. If you didn't request this, you can safely ignore this email.</p>
-  `.trim();
-
-  return { subject, html, text };
-}
-
-/**
- * Body for the weekly "you have no availability yet" reminder. `isoWeekStart`
- * is the upcoming week's Monday as `yyyy-MM-dd`, for display only — the
- * caller has already decided the user has nothing scheduled.
- */
-export function weeklyAvailabilityReminderEmail(
-  name: string | null,
-  isoWeekStart: string,
-): { subject: string; html: string; text: string } {
-  const appUrl = process.env.APP_URL ?? "http://localhost:3000";
-  // The calendar is the app's root route, so the bare APP_URL is the link.
-  const calendarUrl = appUrl;
-  const greeting = name ? `Hi ${name},` : "Hi,";
-  const subject = "You have no availability set for next week";
-  const text = [
-    greeting,
-    "",
-    `You haven't added any availability for the upcoming week (starting ${isoWeekStart}) yet.`,
-    "",
-    `Add your availability: ${calendarUrl}`,
-  ].join("\n");
-  const html = `
-    <p>${greeting}</p>
-    <p>You haven't added any availability for the upcoming week (starting ${isoWeekStart}) yet.</p>
-    <p><a href="${calendarUrl}">Add your availability</a></p>
   `.trim();
 
   return { subject, html, text };

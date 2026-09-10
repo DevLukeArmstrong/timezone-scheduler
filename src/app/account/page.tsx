@@ -16,7 +16,7 @@ export default async function AccountPage() {
   const session = await auth();
   const user = session?.user?.id ? await getUserById(session.user.id) : null;
   if (!user) {
-    redirect("/login");
+    redirect("/login?stale=1");
   }
 
   const favoriteTimeZones = await listFavoriteTimeZones(user.id);

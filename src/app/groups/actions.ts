@@ -9,6 +9,8 @@ import {
   promoteMemberToAdmin,
   regenerateInviteToken,
   removeMember,
+  sendGroupDiscordTestMessage,
+  setGroupDiscordWebhook,
 } from "@/lib/services/groups";
 import { ServiceError } from "@/lib/errors";
 
@@ -167,4 +169,66 @@ export async function regenerateInviteTokenAction(
 
   revalidatePath("/groups");
   return {};
+}
+
+export interface DiscordWebhookActionState {
+  error?: string;
+  success?: string;
+}
+
+/**
+ * Saves or clears the group's Discord webhook. The URL only ever travels
+ * client → server in this form post; it's never rendered back out, so a
+ * member who isn't an admin (or an admin's browser history) never sees it.
+ */
+export async function setDiscordWebhookAction(
+  groupId: string,
+  _prevState: DiscordWebhookActionState,
+  formData: FormData,
+): Promise<DiscordWebhookActionState> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return { error: "Please sign in." };
+  }
+
+  const intent = String(formData.get("intent") ?? "save");
+  const webhookUrl = intent === "clear" ? null : String(formData.get("webhookUrl") ?? "");
+
+  try {
+    await setGroupDiscordWebhook(groupId, userId, webhookUrl);
+  } catch (error) {
+    if (error instanceof ServiceError) {
+      return { error: error.message };
+    }
+    throw error;
+  }
+
+  revalidatePath("/groups");
+  return { success: webhookUrl ? "Webhook saved." : "Discord notifications turned off." };
+}
+
+export async function sendDiscordTestMessageAction(
+  groupId: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _prevState: DiscordWebhookActionState,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _formData: FormData,
+): Promise<DiscordWebhookActionState> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return { error: "Please sign in." };
+  }
+
+  try {
+    await sendGroupDiscordTestMessage(groupId, userId);
+  } catch (error) {
+    if (error instanceof ServiceError) {
+      return { error: error.message };
+    }
+    throw error;
+  }
+
+  return { success: "Test message sent — check the channel." };
 }

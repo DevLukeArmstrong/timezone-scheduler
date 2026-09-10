@@ -8,21 +8,26 @@ import {
 
 const initialState: UpdateNotificationPreferencesActionState = {};
 
+// Group notifications post to a shared Discord channel, so none of these
+// can hide a post from one person. Each controls the only thing that *can*
+// be enforced: whether you're named, or whether your own action posts.
 const TOGGLES = [
   {
     name: "notifyReminder",
-    label: "Availability reminders",
-    description: "Email me a reminder to add my upcoming availability.",
+    label: "Weekly reminder",
+    description:
+      "Name me in the Friday reminder if I haven't added availability for next week.",
   },
   {
     name: "notifyOverlap",
-    label: "Overlap alerts",
-    description: "Email me when a new slot overlaps with someone else's in a shared group.",
+    label: "Free-together alerts",
+    description:
+      "Name me when enough of a group is free at the same time. Off still counts me — it just doesn't call me out.",
   },
   {
     name: "notifyNewAvailability",
-    label: "New availability",
-    description: "Email me when another group member adds new availability.",
+    label: "Announce my availability",
+    description: "Post to the group's channel when I add availability.",
   },
 ] as const;
 
@@ -58,7 +63,8 @@ export function AccountNotificationsForm({
           Notifications
         </h2>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Choose which emails Timezone Scheduler sends you.
+          How you appear in your groups&apos; Discord posts. Email is only used
+          for password reset.
         </p>
       </div>
 

@@ -13,7 +13,7 @@ export default async function GroupsPage() {
   const user = session?.user?.id ? await getUserById(session.user.id) : null;
 
   if (!user) {
-    redirect("/login");
+    redirect("/login?stale=1");
   }
 
   const groups = await listGroupsForUser(user.id);
