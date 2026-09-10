@@ -14,6 +14,12 @@ import {
 } from "@/lib/services/availability";
 import { listFavoriteTimeZones } from "@/lib/services/favorite-timezones";
 import {
+  computeOverlapWindows,
+  rankBestTimes,
+  type OverlapGroup,
+  type OverlapWindow,
+} from "@/lib/overlap";
+import {
   MONTH_LABELS,
   getMonthDays,
   getViewWindow,
@@ -35,6 +41,7 @@ import {
 } from "@/lib/timezone";
 import type { Group } from "@/lib/db";
 import { AppHeader } from "@/components/app-header";
+import { BestTimes } from "@/components/best-times";
 import { CalendarAvailabilityForm } from "@/components/calendar-availability-form";
 import { CalendarGrid, type CalendarLegendMember } from "@/components/calendar-grid";
 import { CalendarMonthGrid } from "@/components/calendar-month-grid";
@@ -175,6 +182,29 @@ export default async function CalendarPage({
   const hoursExtraQuery = expandedHours ? undefined : "hours=all";
   const dayExtraQuery = `day=${mobileDayIndex}`;
 
+  // Overlap shading and the best-times list are week-grid features, and both
+  // read from one `computeOverlapWindows` call — which is itself a call into
+  // the same `findQuorumWindows` the Discord alert runs (see src/lib/overlap.ts).
+  // Computing it twice, or computing it here and again in the grid, is exactly
+  // the divergence this is meant to rule out.
+  const overlapGroups: OverlapGroup[] = authorizedGroups.map((group, index) => ({
+    id: group.id,
+    name: group.name,
+    quorumThreshold: group.quorumThreshold,
+    memberIds: memberLists[index].map((member) => member.id),
+  }));
+  const overlapWindows: OverlapWindow[] =
+    view === "week" ? computeOverlapWindows(occurrences, overlapGroups, window) : [];
+
+  // A week already gone has no "best times" left to suggest, so fall back to
+  // what it held rather than showing an empty card on every past week.
+  const now = new Date();
+  const upcomingBest = rankBestTimes(
+    overlapWindows.filter((overlap) => overlap.endTime > now),
+  );
+  const bestTimes = upcomingBest.length > 0 ? upcomingBest : rankBestTimes(overlapWindows);
+  const bestTimesAreHistorical = upcomingBest.length === 0 && bestTimes.length > 0;
+
   const hoursToggleHref = withExtraQuery(
     "/",
     joinQueryParts([dateExtraQuery, groupsExtraQuery, dayExtraQuery, hoursExtraQuery]),
@@ -212,6 +242,18 @@ export default async function CalendarPage({
       ]),
     );
   }
+
+  const dayHrefs = Array.from({ length: 7 }, (_, index) =>
+    withExtraQuery(
+      "/",
+      joinQueryParts([
+        dateExtraQuery,
+        groupsExtraQuery,
+        `day=${index}`,
+        expandedHours ? "hours=all" : undefined,
+      ]),
+    ),
+  );
 
   return (
     <div className="flex min-h-full flex-col bg-zinc-50 dark:bg-zinc-950">
@@ -293,9 +335,23 @@ export default async function CalendarPage({
             </>
           )}
 
+          {view === "week" && weekDays && selectedIds.length > 0 && (
+            <BestTimes
+              windows={bestTimes}
+              members={members}
+              timeZone={user.timezone}
+              weekDays={weekDays}
+              viewerId={user.id}
+              showGroupNames={selectedIds.length > 1}
+              dayHrefs={dayHrefs}
+              historical={bestTimesAreHistorical}
+            />
+          )}
+
           {view === "week" && weekDays && (
             <CalendarGrid
               occurrences={occurrences}
+              overlapWindows={overlapWindows}
               members={members}
               timeZone={user.timezone}
               weekDays={weekDays}
