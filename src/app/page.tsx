@@ -356,6 +356,7 @@ export default async function CalendarPage({
               timeZone={user.timezone}
               weekDays={weekDays}
               viewerId={user.id}
+              favoriteTimeZones={favoriteTimeZones}
               showGroupNames={selectedIds.length > 1}
               peakStartHour={peakStartHour}
               peakEndHour={peakEndHour}

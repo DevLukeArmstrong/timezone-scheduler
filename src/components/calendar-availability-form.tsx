@@ -9,10 +9,12 @@ import {
 import { TimeZoneSelect } from "@/components/timezone-select";
 import {
   addLocalDays,
+  formatTimeZoneConversions,
   isValidTimeZone,
   localDateAndMinutesToUtc,
   parseLocalDateString,
   parseTimeToMinutes,
+  shortTimeZoneLabel,
 } from "@/lib/timezone";
 
 const initialState: CalendarActionState = {};
@@ -38,10 +40,6 @@ function todayIso(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
     now.getDate(),
   ).padStart(2, "0")}`;
-}
-
-function shortLabel(timeZone: string): string {
-  return (timeZone.split("/").pop() ?? timeZone).replace(/_/g, " ");
 }
 
 interface CalendarAvailabilityFormProps {
@@ -96,20 +94,7 @@ export function CalendarAvailabilityForm({
       endMinutes <= startMinutes ? addLocalDays(dateParts, 1, timeZone) : dateParts;
     const endUtc = localDateAndMinutesToUtc(endDateParts, endMinutes, timeZone);
 
-    const format = (zone: string, instant: Date) =>
-      new Intl.DateTimeFormat("en-US", {
-        weekday: "short",
-        hour: "numeric",
-        minute: "2-digit",
-        timeZone: zone,
-      }).format(instant);
-
-    return favoriteTimeZones
-      .filter((zone) => zone !== timeZone)
-      .map((zone) => ({
-        zone,
-        range: `${format(zone, startUtc)} – ${format(zone, endUtc)}`,
-      }));
+    return formatTimeZoneConversions(startUtc, endUtc, favoriteTimeZones, timeZone);
   }, [anchorDateStr, startTime, endTime, timeZone, favoriteTimeZones]);
 
   if (groups.length === 0) {
@@ -383,7 +368,7 @@ export function CalendarAvailabilityForm({
             <ul className="space-y-0.5 text-sm text-zinc-700 dark:text-zinc-300">
               {conversions.map(({ zone, range }) => (
                 <li key={zone} className="flex justify-between gap-2">
-                  <span className="text-zinc-500 dark:text-zinc-400">{shortLabel(zone)}</span>
+                  <span className="text-zinc-500 dark:text-zinc-400">{shortTimeZoneLabel(zone)}</span>
                   <span className="font-medium">{range}</span>
                 </li>
               ))}

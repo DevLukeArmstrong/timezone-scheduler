@@ -300,3 +300,44 @@ export function formatMinutesAsTime(minutes: number): string {
   const minute = minutes % 60;
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
+
+/** Short display label for an IANA zone id, e.g. `"America/Los_Angeles"` → `"Los Angeles"`. */
+export function shortTimeZoneLabel(timeZone: string): string {
+  return (timeZone.split("/").pop() ?? timeZone).replace(/_/g, " ");
+}
+
+export interface TimeZoneConversion {
+  zone: string;
+  /** e.g. `"Mon 5:00 PM – Mon 7:00 PM"`. */
+  range: string;
+}
+
+/**
+ * Formats a UTC instant range as a short weekday+time string in each of
+ * `timeZones`, skipping `excludeZone` (the zone the range is already being
+ * displayed in, so the list doesn't repeat it back). Shared by every "what
+ * does this convert to" preview — the add-availability form and the
+ * calendar grid's occurrence preview both call this rather than reimplement
+ * the formatting.
+ */
+export function formatTimeZoneConversions(
+  startUtc: Date,
+  endUtc: Date,
+  timeZones: string[],
+  excludeZone: string,
+): TimeZoneConversion[] {
+  const format = (zone: string, instant: Date) =>
+    new Intl.DateTimeFormat("en-US", {
+      weekday: "short",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: zone,
+    }).format(instant);
+
+  return timeZones
+    .filter((zone) => zone !== excludeZone)
+    .map((zone) => ({
+      zone,
+      range: `${format(zone, startUtc)} – ${format(zone, endUtc)}`,
+    }));
+}

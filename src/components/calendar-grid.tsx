@@ -13,6 +13,7 @@ import { getOverlapHeat, heatLegendCounts } from "@/lib/overlap-colors";
 import { utcToWallClock } from "@/lib/timezone";
 import { getMemberColor } from "@/lib/member-colors";
 import { OwnOccurrenceActions } from "@/components/own-occurrence-actions";
+import { OccurrenceConversionPreview } from "@/components/occurrence-conversion-preview";
 
 const HOURS = Array.from(
   { length: GRID_END_HOUR - GRID_START_HOUR },
@@ -121,6 +122,8 @@ interface CalendarGridProps {
   timeZone: string;
   weekDays: Date[];
   viewerId: string;
+  /** From Account settings — powers the "converts to" hover/tap preview on each occurrence. */
+  favoriteTimeZones: string[];
   /** True when the viewer belongs to more than one group so slot labels disambiguate by group name. */
   showGroupNames: boolean;
   /** Hours given full row height; everything else is compressed. */
@@ -155,6 +158,7 @@ export function CalendarGrid({
   timeZone,
   weekDays,
   viewerId,
+  favoriteTimeZones,
   showGroupNames,
   peakStartHour,
   peakEndHour,
@@ -360,6 +364,10 @@ export function CalendarGrid({
                         label={label}
                         style={style}
                         className={`group absolute overflow-hidden rounded-md border ${color.border} ${color.bg} ${color.text}`}
+                        startUtc={p.occurrence.startTime}
+                        endUtc={p.occurrence.endTime}
+                        displayTimeZone={timeZone}
+                        favoriteTimeZones={favoriteTimeZones}
                       >
                         <span className="truncate text-xs font-semibold">
                           You{p.occurrence.isRecurring ? " · ↻" : ""}
@@ -372,11 +380,15 @@ export function CalendarGrid({
                   }
 
                   return (
-                    <div
+                    <OccurrenceConversionPreview
                       key={`${p.occurrence.occurrenceKey}-${dayIndex}`}
-                      title={`${ownerName}: ${label}`}
                       style={style}
-                      className={`absolute overflow-hidden rounded-md border p-1 text-left ${color.border} ${color.bg} ${color.text}`}
+                      className={`absolute cursor-pointer overflow-hidden rounded-md border p-1 text-left ${color.border} ${color.bg} ${color.text}`}
+                      startUtc={p.occurrence.startTime}
+                      endUtc={p.occurrence.endTime}
+                      displayTimeZone={timeZone}
+                      favoriteTimeZones={favoriteTimeZones}
+                      heading={`${ownerName}: ${label}`}
                     >
                       <span className="block truncate text-xs font-semibold">
                         {ownerName}
@@ -385,7 +397,7 @@ export function CalendarGrid({
                       {hasRoomForTime && (
                         <span className="block truncate text-[11px]">{label}</span>
                       )}
-                    </div>
+                    </OccurrenceConversionPreview>
                   );
                 })}
 

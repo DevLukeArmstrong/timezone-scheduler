@@ -4,6 +4,11 @@ import {
   deleteCalendarAvailabilitySlotAction,
 } from "@/app/calendar-actions";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
+import { ConversionPreviewButton } from "@/components/occurrence-conversion-preview";
+
+/** Shared badge styling for the small corner-overlay buttons ("all", info) on an own block. */
+const CORNER_BUTTON_CLASSNAME =
+  "absolute z-10 rounded px-1 py-0.5 text-[10px] font-semibold leading-4 opacity-80 hover:bg-black/10 hover:opacity-100 dark:hover:bg-white/10";
 
 interface OwnOccurrenceActionsProps {
   slotId: string;
@@ -13,6 +18,10 @@ interface OwnOccurrenceActionsProps {
   className: string;
   style: CSSProperties;
   children: ReactNode;
+  startUtc: Date;
+  endUtc: Date;
+  displayTimeZone: string;
+  favoriteTimeZones: string[];
 }
 
 /**
@@ -28,22 +37,33 @@ export function OwnOccurrenceActions({
   className,
   style,
   children,
+  startUtc,
+  endUtc,
+  displayTimeZone,
+  favoriteTimeZones,
 }: OwnOccurrenceActionsProps) {
+  const conversionData = { startUtc, endUtc, displayTimeZone, favoriteTimeZones, heading: label };
+
   if (!isRecurring || !occurrenceDate) {
     return (
-      <form
-        action={deleteCalendarAvailabilitySlotAction.bind(null, slotId)}
-        className={className}
-        style={style}
-      >
-        <ConfirmSubmitButton
-          confirmMessage={`Remove this availability slot (${label})?`}
-          title="Remove this slot"
-          className="absolute inset-0 flex h-full w-full flex-col items-start justify-start p-1 text-left"
+      <div className={className} style={style}>
+        <form
+          action={deleteCalendarAvailabilitySlotAction.bind(null, slotId)}
+          className="absolute inset-0"
         >
-          {children}
-        </ConfirmSubmitButton>
-      </form>
+          <ConfirmSubmitButton
+            confirmMessage={`Remove this availability slot (${label})?`}
+            title="Remove this slot"
+            className="absolute inset-0 flex h-full w-full flex-col items-start justify-start p-1 pr-6 text-left"
+          >
+            {children}
+          </ConfirmSubmitButton>
+        </form>
+        <ConversionPreviewButton
+          {...conversionData}
+          className={`${CORNER_BUTTON_CLASSNAME} right-0.5 top-0.5`}
+        />
+      </div>
     );
   }
 
@@ -80,6 +100,10 @@ export function OwnOccurrenceActions({
           all
         </ConfirmSubmitButton>
       </form>
+      <ConversionPreviewButton
+        {...conversionData}
+        className={`${CORNER_BUTTON_CLASSNAME} right-0.5 bottom-0.5`}
+      />
     </div>
   );
 }
