@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "crypto";
+import { timingSafeEqualString } from "@/lib/timing-safe-equal";
 
 /**
  * Bearer-token gate for the manual-trigger routes under /api/cron/*.
@@ -15,16 +15,8 @@ export function authorizeCronRequest(request: Request): Response | null {
   }
 
   const provided = request.headers.get("authorization") ?? "";
-  if (!isEqual(provided, `Bearer ${secret}`)) {
+  if (!timingSafeEqualString(provided, `Bearer ${secret}`)) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
   return null;
-}
-
-/** Constant-time comparison so the shared secret can't be brute-forced via timing. */
-function isEqual(provided: string, expected: string): boolean {
-  const providedBuf = Buffer.from(provided);
-  const expectedBuf = Buffer.from(expected);
-  if (providedBuf.length !== expectedBuf.length) return false;
-  return timingSafeEqual(providedBuf, expectedBuf);
 }
