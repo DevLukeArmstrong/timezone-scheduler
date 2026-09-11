@@ -48,6 +48,7 @@ import { CalendarMonthGrid } from "@/components/calendar-month-grid";
 import { CalendarNav } from "@/components/calendar-nav";
 import { CalendarViewSwitcher } from "@/components/calendar-view-switcher";
 import { CalendarYearGrid } from "@/components/calendar-year-grid";
+import { FirstAvailabilityNudge } from "@/components/first-availability-nudge";
 import { GroupFilter } from "@/components/group-filter";
 import { SlotList } from "@/components/slot-list";
 
@@ -309,6 +310,8 @@ export default async function CalendarPage({
               />
             </div>
           </div>
+
+          {allGroups.length > 0 && ownSlots.length === 0 && <FirstAvailabilityNudge />}
 
           {allGroups.length === 0 ? (
             <p className="rounded-lg border border-dashed border-zinc-300 p-4 text-center text-sm text-zinc-400 dark:border-zinc-700">
