@@ -5,10 +5,13 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import {
   createGroup,
+  deleteGroup,
   demoteAdminToMember,
+  leaveGroup,
   promoteMemberToAdmin,
   regenerateInviteToken,
   removeMember,
+  renameGroup,
   sendGroupDiscordTestMessage,
   setGroupDiscordWebhook,
   setGroupQuorumThreshold,
@@ -161,6 +164,95 @@ export async function regenerateInviteTokenAction(
 
   try {
     await regenerateInviteToken(groupId, userId);
+  } catch (error) {
+    if (error instanceof ServiceError) {
+      return { error: error.message };
+    }
+    throw error;
+  }
+
+  revalidatePath("/groups");
+  return {};
+}
+
+export async function renameGroupAction(
+  groupId: string,
+  _prevState: GroupMemberActionState,
+  formData: FormData,
+): Promise<GroupMemberActionState> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return { error: "Please sign in." };
+  }
+
+  const name = String(formData.get("name") ?? "");
+
+  try {
+    await renameGroup(groupId, userId, name);
+  } catch (error) {
+    if (error instanceof ServiceError) {
+      return { error: error.message };
+    }
+    throw error;
+  }
+
+  revalidatePath("/groups");
+  return {};
+}
+
+/**
+ * Leaves the group entirely. Any member can call this except the OWNER —
+ * `leaveGroup` rejects that case with a `ValidationError` explaining they
+ * need to delete the group instead. The viewer lands back on `/groups`
+ * with one fewer card, same as `deleteGroupAction`.
+ */
+export async function leaveGroupAction(
+  groupId: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _prevState: GroupMemberActionState,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _formData: FormData,
+): Promise<GroupMemberActionState> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return { error: "Please sign in." };
+  }
+
+  try {
+    await leaveGroup(groupId, userId);
+  } catch (error) {
+    if (error instanceof ServiceError) {
+      return { error: error.message };
+    }
+    throw error;
+  }
+
+  revalidatePath("/groups");
+  return {};
+}
+
+/**
+ * Permanently deletes the group. OWNER-only — `deleteGroup` 403s anyone
+ * else via `getGroupForOwner`. The confirm dialog warning about the
+ * cascade lives client-side, in `GroupDangerZone`.
+ */
+export async function deleteGroupAction(
+  groupId: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _prevState: GroupMemberActionState,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _formData: FormData,
+): Promise<GroupMemberActionState> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return { error: "Please sign in." };
+  }
+
+  try {
+    await deleteGroup(groupId, userId);
   } catch (error) {
     if (error instanceof ServiceError) {
       return { error: error.message };
