@@ -11,6 +11,7 @@ import {
   startOfYear,
 } from "date-fns";
 import { TZDate } from "@date-fns/tz";
+import type { OverlapWindow } from "@/lib/overlap";
 import type { AvailabilityOccurrence } from "@/lib/services/availability";
 import {
   addLocalDays,
@@ -500,4 +501,103 @@ function formatTimeRange(start: Date, end: Date, timeZone: string): string {
     timeZone,
   });
   return `${formatter.format(start)} – ${formatter.format(end)}`;
+}
+
+/** One overlap band as the week grid draws it: clipped to a day, in hours. */
+export interface PositionedOverlapBand {
+  dayIndex: number;
+  /** Fractional hours since local midnight, clipped like {@link PositionedGroupSlot}. */
+  startHour: number;
+  endHour: number;
+  window: OverlapWindow;
+}
+
+/**
+ * Projects overlap windows onto the same 7-day, fractional-hour geometry the
+ * slot blocks use, so the renderer can put both through `buildHourScale` and
+ * have the shading land on exactly the pixels its slots do — peak-hour
+ * compression included.
+ *
+ * Where two selected groups' windows cover the same minute, the larger
+ * headcount wins that minute: the bands are split at the crossing and only
+ * the winner is drawn. Painting both and letting them blend would compound
+ * two washes into a third shade that means nothing, and a group's band is
+ * only ever comparable against its own quorum threshold anyway. With a
+ * single group selected there is nothing to resolve — `findQuorumWindows`
+ * already returns disjoint spans — and this reduces to the clipping.
+ */
+export function layoutOverlapWindowsForWeek(
+  windows: OverlapWindow[],
+  timeZone: string,
+  weekDays: Date[],
+): PositionedOverlapBand[] {
+  const byDay = new Map<number, PositionedOverlapBand[]>();
+
+  for (const window of windows) {
+    const localStart = utcToWallClock(window.startTime, timeZone);
+    const localEnd = utcToWallClock(window.endTime, timeZone);
+
+    weekDays.forEach((dayStart, dayIndex) => {
+      const dayEnd = addDays(dayStart, 1);
+      if (localStart >= dayEnd || localEnd <= dayStart) return;
+
+      const startHour = Math.max(
+        GRID_START_HOUR,
+        hoursSinceMidnight(localStart < dayStart ? dayStart : localStart, dayStart),
+      );
+      const endHour = Math.min(
+        GRID_END_HOUR,
+        hoursSinceMidnight(localEnd > dayEnd ? dayEnd : localEnd, dayStart),
+      );
+      if (endHour <= startHour) return;
+
+      const band = { dayIndex, startHour, endHour, window };
+      const list = byDay.get(dayIndex);
+      if (list) list.push(band);
+      else byDay.set(dayIndex, [band]);
+    });
+  }
+
+  const positioned: PositionedOverlapBand[] = [];
+  for (const [dayIndex, bands] of byDay) {
+    positioned.push(...resolveOverlappingBands(dayIndex, bands));
+  }
+  return positioned;
+}
+
+/**
+ * Splits a day's bands at every boundary, keeps the densest window over each
+ * resulting slice, and re-merges neighbouring slices that the same window
+ * won — so a band interrupted by a denser one from another group comes back
+ * as the two pieces either side rather than a dozen one-minute slivers.
+ */
+function resolveOverlappingBands(
+  dayIndex: number,
+  bands: PositionedOverlapBand[],
+): PositionedOverlapBand[] {
+  const boundaries = [
+    ...new Set(bands.flatMap((band) => [band.startHour, band.endHour])),
+  ].sort((a, b) => a - b);
+
+  const resolved: PositionedOverlapBand[] = [];
+  for (let i = 0; i < boundaries.length - 1; i += 1) {
+    const startHour = boundaries[i];
+    const endHour = boundaries[i + 1];
+
+    let winner: OverlapWindow | null = null;
+    for (const band of bands) {
+      if (band.startHour > startHour || band.endHour < endHour) continue;
+      if (!winner || band.window.freeCount > winner.freeCount) winner = band.window;
+    }
+    if (!winner) continue;
+
+    const previous = resolved[resolved.length - 1];
+    if (previous && previous.window === winner && previous.endHour === startHour) {
+      previous.endHour = endHour;
+      continue;
+    }
+    resolved.push({ dayIndex, startHour, endHour, window: winner });
+  }
+
+  return resolved;
 }

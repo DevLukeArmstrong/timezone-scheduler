@@ -6,7 +6,10 @@ import {
   GRID_START_HOUR,
   WEEKDAY_LABELS,
   layoutGroupSlotsForWeek,
+  layoutOverlapWindowsForWeek,
 } from "@/lib/calendar";
+import { maxFreeCount, type OverlapWindow } from "@/lib/overlap";
+import { getOverlapHeat, heatLegendCounts } from "@/lib/overlap-colors";
 import { utcToWallClock } from "@/lib/timezone";
 import { getMemberColor } from "@/lib/member-colors";
 import { OwnOccurrenceActions } from "@/components/own-occurrence-actions";
@@ -29,6 +32,16 @@ const TWO_LINE_MIN_PX = 32;
 /** Below this an hour's gutter label has no room to render legibly. */
 const HOUR_LABEL_MIN_PX = 22;
 const LANE_GAP_PX = 2;
+/**
+ * Left strip of every day column that slot blocks leave alone, so the overlap
+ * shading behind them is never completely papered over. Without it the
+ * densest overlap is the one you cannot see: five people free means five
+ * lanes filling the column, and the shading that says "five" disappears
+ * under the very blocks it is describing.
+ */
+const HEAT_GUTTER_PX = 12;
+/** Below this height an overlap band has no room for its headcount badge. */
+const HEAT_BADGE_MIN_PX = 18;
 
 function formatHour(hour: number): string {
   const period = hour >= 12 ? "PM" : "AM";
@@ -97,6 +110,12 @@ export interface CalendarLegendMember {
 interface CalendarGridProps {
   /** Concrete occurrences (one-offs + expanded recurring) for the visible week. */
   occurrences: AvailabilityOccurrence[];
+  /**
+   * Spans where a fixed set of one group's members are all free, straight
+   * from `computeOverlapWindows` — i.e. from the same `findQuorumWindows`
+   * the Discord alert runs. The grid shades these; it does not recompute them.
+   */
+  overlapWindows: OverlapWindow[];
   /** Every distinct member across the currently-selected groups, for the color legend. */
   members: CalendarLegendMember[];
   timeZone: string;
@@ -131,6 +150,7 @@ interface CalendarGridProps {
  */
 export function CalendarGrid({
   occurrences,
+  overlapWindows,
   members,
   timeZone,
   weekDays,
@@ -145,6 +165,12 @@ export function CalendarGrid({
   nextDayHref,
 }: CalendarGridProps) {
   const positioned = layoutGroupSlotsForWeek(occurrences, timeZone, weekDays);
+  const overlapBands = layoutOverlapWindowsForWeek(overlapWindows, timeZone, weekDays);
+  const densest = maxFreeCount(overlapWindows);
+  // Every selected group has its own threshold, so the legend can only name a
+  // number when they agree; otherwise it explains the colour, not the count.
+  const thresholds = [...new Set(overlapWindows.map((w) => w.quorumThreshold))];
+  const legendThreshold = thresholds.length === 1 ? thresholds[0] : null;
   const today = utcToWallClock(new Date(), timeZone);
   const memberIndexById = new Map(members.map((member, index) => [member.id, index]));
   const scale = buildHourScale(peakStartHour, peakEndHour, expandedHours);
@@ -254,6 +280,48 @@ export function CalendarGrid({
                 />
               ))}
 
+              {/*
+                Overlap shading. Behind the slot blocks (DOM order decides —
+                these are all absolutely positioned siblings) and on the same
+                `scale.offsetAt` pixels they use, so a band lines up with the
+                slots it is made of at either hour height, and a band crossing
+                the peak boundary squashes through the compressed region as
+                one continuous run rather than breaking in two.
+              */}
+              {overlapBands
+                .filter((band) => band.dayIndex === dayIndex)
+                .map((band) => {
+                  const { window } = band;
+                  const heat = getOverlapHeat(window.freeCount, window.quorumThreshold);
+                  const top = scale.offsetAt(band.startHour);
+                  // No minimum: bands tile the day edge to edge, so padding a
+                  // short one out would push it over its neighbour.
+                  const height = Math.max(2, scale.offsetAt(band.endHour) - top);
+                  const who = window.memberIds
+                    .map((id) => {
+                      const member = members[memberIndexById.get(id) ?? -1];
+                      if (!member) return "someone";
+                      return member.id === viewerId ? "you" : member.name ?? member.email;
+                    })
+                    .join(", ");
+
+                  return (
+                    <div
+                      key={`heat-${window.groupId}-${dayIndex}-${band.startHour}`}
+                      style={{ top: `${top}px`, height: `${height}px` }}
+                      title={`${window.freeCount} free${
+                        window.meetsQuorum ? ` (quorum is ${window.quorumThreshold})` : ""
+                      } · ${who}${showGroupNames ? ` · ${window.groupName}` : ""}`}
+                      className={`absolute inset-x-0 ${heat.bg}`}
+                    >
+                      <span
+                        style={{ width: `${HEAT_GUTTER_PX - 2}px` }}
+                        className={`absolute inset-y-0 left-0 ${heat.strip}`}
+                      />
+                    </div>
+                  );
+                })}
+
               {positioned
                 .filter((p) => p.dayIndex === dayIndex)
                 .map((p) => {
@@ -271,12 +339,15 @@ export function CalendarGrid({
                     scale.offsetAt(p.endHour) - top,
                   );
                   const hasRoomForTime = height >= TWO_LINE_MIN_PX;
-                  const leftPercent = (p.lane / p.laneCount) * 100;
+                  // Lanes divide what is left of the column after the heat
+                  // gutter, so the shading always shows through on the left
+                  // however many members are stacked up here.
+                  const laneFraction = p.lane / p.laneCount;
                   const style = {
                     top: `${top}px`,
                     height: `${height}px`,
-                    left: `${leftPercent}%`,
-                    width: `calc(${100 / p.laneCount}% - ${LANE_GAP_PX}px)`,
+                    left: `calc(${HEAT_GUTTER_PX}px + (100% - ${HEAT_GUTTER_PX}px) * ${laneFraction})`,
+                    width: `calc((100% - ${HEAT_GUTTER_PX}px) / ${p.laneCount} - ${LANE_GAP_PX}px)`,
                   };
 
                   if (isOwn) {
@@ -317,6 +388,32 @@ export function CalendarGrid({
                     </div>
                   );
                 })}
+
+              {/*
+                Headcount badges last, so they sit above the blocks: at full
+                density the blocks cover everything but the gutter, and a
+                number is the one reading of "how many" that needs no colour
+                comparison at all.
+              */}
+              {overlapBands
+                .filter((band) => band.dayIndex === dayIndex && band.window.meetsQuorum)
+                .map((band) => {
+                  const top = scale.offsetAt(band.startHour);
+                  if (scale.offsetAt(band.endHour) - top < HEAT_BADGE_MIN_PX) return null;
+                  const heat = getOverlapHeat(
+                    band.window.freeCount,
+                    band.window.quorumThreshold,
+                  );
+                  return (
+                    <span
+                      key={`count-${band.window.groupId}-${dayIndex}-${band.startHour}`}
+                      style={{ top: `${top + 2}px` }}
+                      className={`pointer-events-none absolute right-0.5 z-10 rounded px-1 text-[10px] font-semibold leading-4 ${heat.badge}`}
+                    >
+                      {band.window.freeCount} free
+                    </span>
+                  );
+                })}
             </div>
           ))}
         </div>
@@ -338,6 +435,26 @@ export function CalendarGrid({
             : `${formatHour(peakStartHour)} onwards at full height; quieter hours are compressed, not hidden.`}
         </p>
       </div>
+
+      {densest > 0 && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400">
+          <span className="font-medium">People free:</span>
+          {heatLegendCounts(densest, legendThreshold ?? densest).map((count) => {
+            const heat = getOverlapHeat(count, legendThreshold ?? count);
+            return (
+              <span key={count} className="flex items-center gap-1.5">
+                <span className={`size-3 rounded-sm ${heat.strip}`} />
+                {count}
+              </span>
+            );
+          })}
+          <span>
+            {legendThreshold === null
+              ? "· green marks a window that meets its group's quorum"
+              : `· green from ${legendThreshold} — this group's quorum, the same one the Discord alert posts about`}
+          </span>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-4 text-xs text-zinc-500 dark:text-zinc-400">
         {members.map((member, index) => {
