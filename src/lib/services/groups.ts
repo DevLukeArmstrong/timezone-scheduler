@@ -78,6 +78,23 @@ export async function getGroupForAdmin(groupId: string, userId: string): Promise
   return membership.group;
 }
 
+/**
+ * The authorization gate for owner-only actions — deleting a group. Stricter
+ * than `getGroupForAdmin`: an ADMIN can manage members and settings, but
+ * destroying the group (and everything cascading from it) is reserved for
+ * the OWNER alone.
+ */
+export async function getGroupForOwner(groupId: string, userId: string): Promise<Group | null> {
+  const membership = await db.groupMembership.findUnique({
+    where: { groupId_userId: { groupId, userId } },
+    include: { group: true },
+  });
+  if (!membership || membership.role !== GroupRole.OWNER) {
+    return null;
+  }
+  return membership.group;
+}
+
 /** Looks up a group by its invite link token. Never expose this by id. */
 export async function getGroupByInviteToken(inviteToken: string): Promise<Group | null> {
   return db.group.findUnique({ where: { inviteToken } });
@@ -272,6 +289,70 @@ export async function markGroupsQuorumDirty(groupIds: Array<string | null>): Pro
   } catch (error) {
     console.error("Couldn't mark groups for quorum re-evaluation:", error);
   }
+}
+
+/**
+ * Renames a group. Callable by the group's OWNER or an existing ADMIN, same
+ * as the other settings mutations below — shares `createGroup`'s validation.
+ */
+export async function renameGroup(
+  groupId: string,
+  actingUserId: string,
+  name: string,
+): Promise<Group> {
+  const group = await getGroupForAdmin(groupId, actingUserId);
+  if (!group) {
+    throw new ForbiddenError("Only the group owner or an admin can rename this group.");
+  }
+
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new ValidationError("Group name is required.");
+  }
+  if (trimmed.length > NAME_MAX_LENGTH) {
+    throw new ValidationError(`Group name must be ${NAME_MAX_LENGTH} characters or fewer.`);
+  }
+
+  return db.group.update({ where: { id: groupId }, data: { name: trimmed } });
+}
+
+/**
+ * Removes `userId`'s membership in the group. Callable by any member except
+ * the OWNER — the owner always keeps a seat, since without one the group has
+ * no admin left to manage it; they have to delete the group or transfer
+ * ownership instead (transfer isn't built yet).
+ */
+export async function leaveGroup(groupId: string, userId: string): Promise<void> {
+  const membership = await db.groupMembership.findUnique({
+    where: { groupId_userId: { groupId, userId } },
+  });
+  if (!membership) {
+    throw new NotFoundError("You're not a member of this group.");
+  }
+  if (membership.role === GroupRole.OWNER) {
+    throw new ValidationError(
+      "The group owner can't leave — delete the group instead.",
+    );
+  }
+
+  await db.groupMembership.delete({ where: { groupId_userId: { groupId, userId } } });
+  await markGroupsQuorumDirty([groupId]);
+}
+
+/**
+ * Permanently deletes a group and, via the schema's cascading foreign keys,
+ * every membership, availability slot, quorum alert, and notification log
+ * scoped to it. Callable by the OWNER only (see `getGroupForOwner`) — there
+ * is no undo, so the caller (the confirm dialog in `GroupDangerZone`) is
+ * responsible for warning about the blast radius before this ever runs.
+ */
+export async function deleteGroup(groupId: string, actingUserId: string): Promise<void> {
+  const group = await getGroupForOwner(groupId, actingUserId);
+  if (!group) {
+    throw new ForbiddenError("Only the group owner can delete this group.");
+  }
+
+  await db.group.delete({ where: { id: groupId } });
 }
 
 /**

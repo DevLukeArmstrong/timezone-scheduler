@@ -62,6 +62,7 @@ export default async function GroupsPage() {
                     members={members}
                     viewerId={user.id}
                     viewerIsAdmin={viewerIsAdmin}
+                    viewerIsOwner={viewerRole === "OWNER"}
                   />
                 );
               })}

@@ -9,10 +9,12 @@ import {
 import { TimeZoneSelect } from "@/components/timezone-select";
 import {
   addLocalDays,
+  formatTimeZoneConversions,
   isValidTimeZone,
   localDateAndMinutesToUtc,
   parseLocalDateString,
   parseTimeToMinutes,
+  shortTimeZoneLabel,
 } from "@/lib/timezone";
 
 const initialState: CalendarActionState = {};
@@ -38,10 +40,6 @@ function todayIso(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
     now.getDate(),
   ).padStart(2, "0")}`;
-}
-
-function shortLabel(timeZone: string): string {
-  return (timeZone.split("/").pop() ?? timeZone).replace(/_/g, " ");
 }
 
 interface CalendarAvailabilityFormProps {
@@ -96,25 +94,15 @@ export function CalendarAvailabilityForm({
       endMinutes <= startMinutes ? addLocalDays(dateParts, 1, timeZone) : dateParts;
     const endUtc = localDateAndMinutesToUtc(endDateParts, endMinutes, timeZone);
 
-    const format = (zone: string, instant: Date) =>
-      new Intl.DateTimeFormat("en-US", {
-        weekday: "short",
-        hour: "numeric",
-        minute: "2-digit",
-        timeZone: zone,
-      }).format(instant);
-
-    return favoriteTimeZones
-      .filter((zone) => zone !== timeZone)
-      .map((zone) => ({
-        zone,
-        range: `${format(zone, startUtc)} – ${format(zone, endUtc)}`,
-      }));
+    return formatTimeZoneConversions(startUtc, endUtc, favoriteTimeZones, timeZone);
   }, [anchorDateStr, startTime, endTime, timeZone, favoriteTimeZones]);
 
   if (groups.length === 0) {
     return (
-      <div className="space-y-2 rounded-xl border border-dashed border-zinc-300 bg-white p-4 text-sm text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
+      <div
+        id="add-availability"
+        className="space-y-2 rounded-xl border border-dashed border-zinc-300 bg-white p-4 text-sm text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400"
+      >
         <h2 className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
           Add availability
         </h2>
@@ -137,6 +125,7 @@ export function CalendarAvailabilityForm({
 
   return (
     <form
+      id="add-availability"
       action={formAction}
       className="space-y-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
     >
@@ -383,7 +372,7 @@ export function CalendarAvailabilityForm({
             <ul className="space-y-0.5 text-sm text-zinc-700 dark:text-zinc-300">
               {conversions.map(({ zone, range }) => (
                 <li key={zone} className="flex justify-between gap-2">
-                  <span className="text-zinc-500 dark:text-zinc-400">{shortLabel(zone)}</span>
+                  <span className="text-zinc-500 dark:text-zinc-400">{shortTimeZoneLabel(zone)}</span>
                   <span className="font-medium">{range}</span>
                 </li>
               ))}

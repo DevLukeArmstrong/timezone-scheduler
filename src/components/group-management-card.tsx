@@ -1,6 +1,8 @@
 import type { Group } from "@/lib/db";
 import type { GroupMemberSummary } from "@/lib/services/groups";
 import { GroupMemberList } from "@/components/group-member-list";
+import { GroupNameHeading } from "@/components/group-name-heading";
+import { GroupDangerZone } from "@/components/group-danger-zone";
 import { InviteLinkCard } from "@/components/invite-link-card";
 import { DiscordWebhookCard } from "@/components/discord-webhook-card";
 
@@ -10,6 +12,9 @@ interface GroupManagementCardProps {
   viewerId: string;
   /** Whether the viewer is this group's OWNER or an ADMIN. */
   viewerIsAdmin: boolean;
+  /** Whether the viewer is specifically this group's OWNER — gates delete
+   * (owner-only) vs. leave (everyone else) in `GroupDangerZone`. */
+  viewerIsOwner: boolean;
 }
 
 /**
@@ -27,13 +32,12 @@ export function GroupManagementCard({
   members,
   viewerId,
   viewerIsAdmin,
+  viewerIsOwner,
 }: GroupManagementCardProps) {
   return (
     <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="truncate text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-          {group.name}
-        </h3>
+        <GroupNameHeading groupId={group.id} name={group.name} isAdmin={viewerIsAdmin} />
         <span className="shrink-0 text-xs text-zinc-400 dark:text-zinc-500">
           {members.length} member{members.length === 1 ? "" : "s"}
         </span>
@@ -55,6 +59,8 @@ export function GroupManagementCard({
         viewerId={viewerId}
         viewerIsAdmin={viewerIsAdmin}
       />
+
+      <GroupDangerZone groupId={group.id} groupName={group.name} isOwner={viewerIsOwner} />
     </div>
   );
 }
