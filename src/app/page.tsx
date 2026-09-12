@@ -49,6 +49,7 @@ import { CalendarNav } from "@/components/calendar-nav";
 import { CalendarViewSwitcher } from "@/components/calendar-view-switcher";
 import { CalendarYearGrid } from "@/components/calendar-year-grid";
 import { FirstAvailabilityNudge } from "@/components/first-availability-nudge";
+import { FreeRightNow } from "@/components/free-right-now";
 import { GroupFilter } from "@/components/group-filter";
 import { SlotList } from "@/components/slot-list";
 
@@ -120,14 +121,36 @@ export default async function CalendarPage({
   ).filter((group): group is Group => group !== null);
   const selectedIds = authorizedGroups.map((group) => group.id);
 
-  const [slots, memberLists, favoriteTimeZones] = await Promise.all([
+  const now = new Date();
+
+  const [slots, memberLists, favoriteTimeZones, allGroupSlots] = await Promise.all([
     listAvailabilitySlotsForGroups(selectedIds),
     Promise.all(selectedIds.map((id) => listGroupMembers(id))),
     listFavoriteTimeZones(user.id),
+    // Independent of the group filter above — "who's free right now" always
+    // looks across every group the viewer is in, not just the selected ones.
+    listAvailabilitySlotsForGroups(allGroupIds),
   ]);
 
   const members = dedupeMembers(memberLists.flat());
   const ownSlots = slots.filter((slot) => slot.user.id === user.id);
+
+  // A 1ms window is enough: `expandSlotsToOccurrences`'s half-open interval
+  // check (`start < windowEnd && end > windowStart`) then keeps exactly the
+  // occurrences whose own start/end actually straddle this instant, the same
+  // overlap convention used everywhere else in this app.
+  const seenFreeNowIds = new Set<string>();
+  const freeRightNow = expandSlotsToOccurrences(allGroupSlots, {
+    start: now,
+    end: new Date(now.getTime() + 1),
+  })
+    .map((occurrence) => occurrence.user)
+    .filter((person) => {
+      if (person.id === user.id || seenFreeNowIds.has(person.id)) return false;
+      seenFreeNowIds.add(person.id);
+      return true;
+    })
+    .sort((a, b) => (a.name ?? a.email).localeCompare(b.name ?? b.email));
 
   const window = getViewWindow(view, user.timezone, reference);
   const occurrences = expandSlotsToOccurrences(slots, window);
@@ -199,7 +222,6 @@ export default async function CalendarPage({
 
   // A week already gone has no "best times" left to suggest, so fall back to
   // what it held rather than showing an empty card on every past week.
-  const now = new Date();
   const upcomingBest = rankBestTimes(
     overlapWindows.filter((overlap) => overlap.endTime > now),
   );
@@ -310,6 +332,8 @@ export default async function CalendarPage({
               />
             </div>
           </div>
+
+          <FreeRightNow people={freeRightNow} />
 
           {allGroups.length > 0 && ownSlots.length === 0 && <FirstAvailabilityNudge />}
 
