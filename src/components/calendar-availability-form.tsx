@@ -19,13 +19,13 @@ import {
 
 const initialState: CalendarActionState = {};
 
-const INPUT_CLASSNAME =
+export const INPUT_CLASSNAME =
   "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100";
 
-const LABEL_CLASSNAME =
+export const LABEL_CLASSNAME =
   "text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400";
 
-const WEEKDAYS = [
+export const WEEKDAYS = [
   { value: "mon", label: "Mon" },
   { value: "tue", label: "Tue" },
   { value: "wed", label: "Wed" },

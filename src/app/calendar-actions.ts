@@ -10,6 +10,8 @@ import {
   deleteAvailabilityOccurrence,
   deleteAvailabilitySlot,
   deleteAvailabilitySlotsByBatch,
+  updateAvailabilitySlotFromLocalTime,
+  updateRecurringAvailabilitySlot,
 } from "@/lib/services/availability";
 import {
   announceNewAvailability,
@@ -265,6 +267,96 @@ export async function deleteCalendarAvailabilityBatchAction(
 
   await deleteAvailabilitySlotsByBatch(userId, batchId);
   revalidatePath("/");
+}
+
+/**
+ * Edits one of the current user's own one-off slots in place — date and/or
+ * times. Recurring series use {@link updateCalendarAvailabilityRecurringSlotAction}
+ * instead. Scoped to `(slotId, userId)` like the delete actions above.
+ */
+export async function updateCalendarAvailabilitySlotAction(
+  slotId: string,
+  _prevState: CalendarActionState,
+  formData: FormData,
+): Promise<CalendarActionState> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return { error: "Please sign in before editing availability." };
+  }
+
+  const date = String(formData.get("date") ?? "");
+  const startTime = String(formData.get("startTime") ?? "");
+  const endTime = String(formData.get("endTime") ?? "");
+  const endDate = String(formData.get("endDate") ?? "").trim() || date;
+  const timeZone = String(formData.get("timeZone") ?? "").trim() || undefined;
+
+  const start = parseDateAndTime(date, startTime);
+  const end = parseDateAndTime(endDate, endTime);
+  if (!start || !end) {
+    return { error: "Please provide a valid date and start/end time." };
+  }
+
+  try {
+    await updateAvailabilitySlotFromLocalTime({ userId, slotId, start, end, timeZone });
+  } catch (error) {
+    return { error: describeError(error) };
+  }
+
+  revalidatePath("/");
+  return NO_ERROR;
+}
+
+/**
+ * Edits one of the current user's own recurring series — daily window,
+ * days-of-week, and/or date range, applied to the whole series. Scoped to
+ * `(slotId, userId)` like the delete actions above.
+ */
+export async function updateCalendarAvailabilityRecurringSlotAction(
+  slotId: string,
+  _prevState: CalendarActionState,
+  formData: FormData,
+): Promise<CalendarActionState> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return { error: "Please sign in before editing availability." };
+  }
+
+  const startMinute = parseTimeToMinutes(String(formData.get("startTime") ?? ""));
+  const endMinute = parseTimeToMinutes(String(formData.get("endTime") ?? ""));
+  if (startMinute == null || endMinute == null) {
+    return { error: "Please provide a valid daily start and end time." };
+  }
+
+  const daysOfWeek = parseDaysOfWeek(formData);
+  const rangeStartRaw = String(formData.get("rangeStart") ?? "").trim();
+  const rangeEndRaw = String(formData.get("rangeEnd") ?? "").trim();
+  const rangeStart = rangeStartRaw ? parseLocalDateString(rangeStartRaw) : null;
+  const rangeEnd = rangeEndRaw ? parseLocalDateString(rangeEndRaw) : null;
+  if (rangeStartRaw && !rangeStart) {
+    return { error: "Please provide a valid series start date." };
+  }
+  if (rangeEndRaw && !rangeEnd) {
+    return { error: "Please provide a valid series end date." };
+  }
+
+  try {
+    await updateRecurringAvailabilitySlot({
+      userId,
+      slotId,
+      startMinute,
+      endMinute,
+      daysOfWeek,
+      rangeStart,
+      rangeEnd,
+    });
+  } catch (error) {
+    return { error: describeError(error) };
+  }
+
+  revalidatePath("/");
+  return NO_ERROR;
 }
 
 function parseDaysOfWeek(formData: FormData): number | null {

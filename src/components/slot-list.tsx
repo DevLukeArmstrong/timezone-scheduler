@@ -11,6 +11,7 @@ import {
   deleteCalendarAvailabilitySlotAction,
 } from "@/app/calendar-actions";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
+import { EditOccurrenceButton } from "@/components/edit-occurrence-popover";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
@@ -120,6 +121,15 @@ export function SlotList({
           >
             <span>{label}</span>
             <div className="flex shrink-0 items-center gap-1">
+              <EditOccurrenceButton
+                slotId={slot.id}
+                isRecurring={isRecurring}
+                startUtc={slot.startTime}
+                endUtc={slot.endTime}
+                displayTimeZone={timeZone}
+                recurrence={slot.recurrence}
+                className="rounded-md px-1.5 py-0.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+              />
               {slot.batchId && (
                 <form
                   action={deleteCalendarAvailabilityBatchAction.bind(null, slot.batchId)}

@@ -353,6 +353,194 @@ export function expandSlotsToOccurrences(
   return occurrences;
 }
 
+export interface UpdateAvailabilitySlotInput {
+  userId: string;
+  slotId: string;
+  /** A UTC instant: a `Date`, or an ISO 8601 string with an explicit offset (e.g. ending in "Z"). */
+  startTime: Date | string;
+  endTime: Date | string;
+}
+
+/**
+ * Updates a one-off slot's date/time window in place. Recurring series must
+ * go through {@link updateRecurringAvailabilitySlot} instead — same split as
+ * {@link deleteAvailabilitySlot} vs. {@link deleteAvailabilityOccurrence}.
+ */
+export async function updateAvailabilitySlot(
+  input: UpdateAvailabilitySlotInput,
+): Promise<AvailabilitySlot> {
+  const startTime = toUtcDate(input.startTime, "startTime");
+  const endTime = toUtcDate(input.endTime, "endTime");
+  if (endTime <= startTime) {
+    throw new ValidationError("endTime must be after startTime.");
+  }
+
+  const slot = await db.availabilitySlot.findFirst({
+    where: { id: input.slotId, userId: input.userId },
+    select: { groupId: true, recurrence: { select: { id: true } } },
+  });
+  if (!slot) {
+    throw new NotFoundError(
+      `No availability slot found with id "${input.slotId}" for this user.`,
+    );
+  }
+  if (slot.recurrence) {
+    throw new ValidationError(
+      "This is a recurring series — edit it with the series form instead.",
+    );
+  }
+
+  await assertNoOverlap(input.userId, slot.groupId, startTime, endTime, input.slotId);
+
+  const updated = await db.availabilitySlot.update({
+    where: { id: input.slotId },
+    data: { startTime, endTime },
+  });
+  await markGroupsQuorumDirty([slot.groupId]);
+  return updated;
+}
+
+export interface UpdateAvailabilitySlotFromLocalTimeInput {
+  userId: string;
+  slotId: string;
+  start: WallClockTime;
+  end: WallClockTime;
+  /** IANA time zone to interpret `start`/`end` in. Defaults to the user's stored timezone. */
+  timeZone?: string;
+}
+
+/**
+ * Wall-clock convenience wrapper for {@link updateAvailabilitySlot}, matching
+ * {@link createAvailabilitySlotFromLocalTime}.
+ */
+export async function updateAvailabilitySlotFromLocalTime(
+  input: UpdateAvailabilitySlotFromLocalTimeInput,
+): Promise<AvailabilitySlot> {
+  const timeZone = input.timeZone ?? (await getUserTimeZoneOrThrow(input.userId));
+
+  return updateAvailabilitySlot({
+    userId: input.userId,
+    slotId: input.slotId,
+    startTime: wallClockToUtc(input.start, timeZone),
+    endTime: wallClockToUtc(input.end, timeZone),
+  });
+}
+
+export interface UpdateRecurringAvailabilitySlotInput {
+  userId: string;
+  slotId: string;
+  startMinute: number;
+  endMinute: number;
+  daysOfWeek?: number | null;
+  rangeStart?: LocalDateParts | null;
+  rangeEnd?: LocalDateParts | null;
+}
+
+/**
+ * Updates a recurring series' daily window, days-of-week, and/or date range.
+ * The rule's time zone is fixed at creation and can't be changed here.
+ * Mirrors {@link createRecurringAvailabilitySlot}'s validation and
+ * overlap-checking, but excludes the series' own occurrences from the
+ * overlap search so shrinking/shifting a window doesn't conflict with itself.
+ */
+export async function updateRecurringAvailabilitySlot(
+  input: UpdateRecurringAvailabilitySlotInput,
+): Promise<AvailabilitySlot> {
+  const slot = await db.availabilitySlot.findFirst({
+    where: { id: input.slotId, userId: input.userId },
+    include: { recurrence: true },
+  });
+  if (!slot) {
+    throw new NotFoundError(
+      `No availability slot found with id "${input.slotId}" for this user.`,
+    );
+  }
+  if (!slot.recurrence) {
+    throw new ValidationError(
+      "This is a one-off slot — edit it with the one-off form instead.",
+    );
+  }
+
+  const rule: RecurrenceRuleInput = {
+    timeZone: slot.recurrence.timeZone,
+    startMinute: input.startMinute,
+    endMinute: input.endMinute,
+    daysOfWeek: input.daysOfWeek ?? null,
+    rangeStart: input.rangeStart ?? null,
+    rangeEnd: input.rangeEnd ?? null,
+  };
+
+  try {
+    assertValidRecurrenceRule(rule);
+  } catch (error) {
+    throw new ValidationError(
+      error instanceof Error ? error.message : "Invalid recurrence rule.",
+    );
+  }
+
+  const fromLocalDate = rule.rangeStart ?? getLocalDateParts(new Date(), rule.timeZone);
+  const first = firstOccurrenceFromRule(rule, fromLocalDate);
+  if (!first) {
+    throw new ValidationError(
+      "This recurrence rule produces no occurrences — check days-of-week and date range.",
+    );
+  }
+
+  const overlapWindowStart = first.startTime;
+  const overlapWindowEnd = rule.rangeEnd
+    ? localDateAndMinutesToUtcExclusiveEnd(
+        rule.rangeEnd,
+        rule.timeZone,
+        rule.endMinute,
+        rule.startMinute,
+      )
+    : new Date(first.startTime.getTime() + 366 * 24 * 60 * 60 * 1000);
+
+  const candidates = expandRecurrenceRule(
+    {
+      timeZone: rule.timeZone,
+      startMinute: rule.startMinute,
+      endMinute: rule.endMinute,
+      daysOfWeek: rule.daysOfWeek ?? null,
+      rangeStart: rule.rangeStart ? localDatePartsToDateOnly(rule.rangeStart) : null,
+      rangeEnd: rule.rangeEnd ? localDatePartsToDateOnly(rule.rangeEnd) : null,
+    },
+    overlapWindowStart,
+    overlapWindowEnd,
+    [],
+  );
+
+  for (const occurrence of candidates) {
+    await assertNoOverlap(
+      input.userId,
+      slot.groupId,
+      occurrence.startTime,
+      occurrence.endTime,
+      input.slotId,
+    );
+  }
+
+  const [updated] = await db.$transaction([
+    db.availabilitySlot.update({
+      where: { id: input.slotId },
+      data: { startTime: first.startTime, endTime: first.endTime },
+    }),
+    db.recurrenceRule.update({
+      where: { slotId: input.slotId },
+      data: {
+        startMinute: rule.startMinute,
+        endMinute: rule.endMinute,
+        daysOfWeek: rule.daysOfWeek,
+        rangeStart: rule.rangeStart ? localDatePartsToDateOnly(rule.rangeStart) : null,
+        rangeEnd: rule.rangeEnd ? localDatePartsToDateOnly(rule.rangeEnd) : null,
+      },
+    }),
+  ]);
+
+  await markGroupsQuorumDirty([slot.groupId]);
+  return updated;
+}
+
 /**
  * Deletes a slot (one-off or entire recurring series), scoped to the owning
  * user so one user can never delete another's availability by guessing an id.
@@ -529,16 +717,23 @@ async function assertUserAndGroup(
 
 /**
  * Rejects when `startTime`–`endTime` overlaps any existing one-off slot or any
- * expanded recurring occurrence for the same user + group scope.
+ * expanded recurring occurrence for the same user + group scope. Pass
+ * `excludeSlotId` when checking an edit against everything *except* the slot
+ * being edited, so shifting a window doesn't conflict with its own old shape.
  */
 async function assertNoOverlap(
   userId: string,
   groupId: string | null,
   startTime: Date,
   endTime: Date,
+  excludeSlotId?: string,
 ): Promise<void> {
   const existing = await db.availabilitySlot.findMany({
-    where: { userId, groupId },
+    where: {
+      userId,
+      groupId,
+      ...(excludeSlotId ? { NOT: { id: excludeSlotId } } : {}),
+    },
     include: { recurrence: true, exceptions: true },
   });
 

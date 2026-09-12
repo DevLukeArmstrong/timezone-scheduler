@@ -4,7 +4,9 @@ import {
   deleteCalendarAvailabilitySlotAction,
 } from "@/app/calendar-actions";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
+import { EditOccurrenceButton } from "@/components/edit-occurrence-popover";
 import { ConversionPreviewButton } from "@/components/occurrence-conversion-preview";
+import type { RecurrenceRule } from "@/lib/db";
 
 /** Shared badge styling for the small corner-overlay buttons ("all", info) on an own block. */
 const CORNER_BUTTON_CLASSNAME =
@@ -22,6 +24,8 @@ interface OwnOccurrenceActionsProps {
   endUtc: Date;
   displayTimeZone: string;
   favoriteTimeZones: string[];
+  /** The series' recurrence rule when `isRecurring` is true, for the edit form's defaults. */
+  recurrence: RecurrenceRule | null;
 }
 
 /**
@@ -41,8 +45,10 @@ export function OwnOccurrenceActions({
   endUtc,
   displayTimeZone,
   favoriteTimeZones,
+  recurrence,
 }: OwnOccurrenceActionsProps) {
   const conversionData = { startUtc, endUtc, displayTimeZone, favoriteTimeZones, heading: label };
+  const editProps = { slotId, isRecurring, startUtc, endUtc, displayTimeZone, recurrence };
 
   if (!isRecurring || !occurrenceDate) {
     return (
@@ -62,6 +68,10 @@ export function OwnOccurrenceActions({
         <ConversionPreviewButton
           {...conversionData}
           className={`${CORNER_BUTTON_CLASSNAME} right-0.5 top-0.5`}
+        />
+        <EditOccurrenceButton
+          {...editProps}
+          className={`${CORNER_BUTTON_CLASSNAME} right-0.5 bottom-0.5`}
         />
       </div>
     );
@@ -103,6 +113,10 @@ export function OwnOccurrenceActions({
       <ConversionPreviewButton
         {...conversionData}
         className={`${CORNER_BUTTON_CLASSNAME} right-0.5 bottom-0.5`}
+      />
+      <EditOccurrenceButton
+        {...editProps}
+        className={`${CORNER_BUTTON_CLASSNAME} left-0.5 bottom-0.5`}
       />
     </div>
   );
