@@ -368,6 +368,7 @@ export function CalendarGrid({
                         endUtc={p.occurrence.endTime}
                         displayTimeZone={timeZone}
                         favoriteTimeZones={favoriteTimeZones}
+                        recurrence={p.occurrence.recurrence}
                       >
                         <span className="truncate text-xs font-semibold">
                           You{p.occurrence.isRecurring ? " · ↻" : ""}
