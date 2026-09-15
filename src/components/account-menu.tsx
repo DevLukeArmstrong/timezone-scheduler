@@ -9,9 +9,11 @@ interface AccountMenuProps {
     name: string | null;
     email: string;
   };
+  /** Shows the admin link. Purely cosmetic — the admin page 404s for non-admins regardless. */
+  isSiteAdmin?: boolean;
 }
 
-export function AccountMenu({ user }: AccountMenuProps) {
+export function AccountMenu({ user, isSiteAdmin = false }: AccountMenuProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -66,6 +68,16 @@ export function AccountMenu({ user }: AccountMenuProps) {
           >
             Account settings
           </Link>
+          {isSiteAdmin && (
+            <Link
+              href="/admin/gamer-of-the-month"
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className="block px-3 py-2 text-sm text-zinc-700 transition-colors hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            >
+              Gamer of the month
+            </Link>
+          )}
           <form action={signOutAction}>
             <button
               type="submit"

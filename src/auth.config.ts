@@ -29,13 +29,17 @@ export const authConfig = {
       // visitor straight back to complete the join.
       const isOnGroups = pathname.startsWith("/groups");
       const isOnAccount = pathname.startsWith("/account");
+      // Login is all that's checked here — whether the signed-in user is a
+      // *site admin* needs the env-configured list, and the page itself
+      // 404s for anyone who isn't (see src/app/admin/gamer-of-the-month).
+      const isOnAdmin = pathname.startsWith("/admin");
       const isOnAuthPage =
         pathname === "/login" ||
         pathname === "/register" ||
         pathname === "/forgot-password" ||
         pathname.startsWith("/reset-password");
 
-      if (isOnCalendar || isOnGroups || isOnAccount) {
+      if (isOnCalendar || isOnGroups || isOnAccount || isOnAdmin) {
         return isLoggedIn;
       }
       if (isOnAuthPage && isLoggedIn) {

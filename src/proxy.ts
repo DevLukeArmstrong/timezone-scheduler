@@ -15,6 +15,8 @@ export const config = {
     "/groups/:path*",
     "/account",
     "/account/:path*",
+    "/admin",
+    "/admin/:path*",
     "/login",
     "/register",
     "/forgot-password",

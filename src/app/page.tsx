@@ -50,6 +50,7 @@ import { CalendarViewSwitcher } from "@/components/calendar-view-switcher";
 import { CalendarYearGrid } from "@/components/calendar-year-grid";
 import { FirstAvailabilityNudge } from "@/components/first-availability-nudge";
 import { FreeRightNow } from "@/components/free-right-now";
+import { GamerOfTheMonthPopup } from "@/components/gamer-of-the-month-popup";
 import { GroupFilter } from "@/components/group-filter";
 import { SlotList } from "@/components/slot-list";
 
@@ -281,6 +282,7 @@ export default async function CalendarPage({
   return (
     <div className="flex min-h-full flex-col bg-zinc-50 dark:bg-zinc-950">
       <AppHeader user={user} activeNav="calendar" />
+      <GamerOfTheMonthPopup viewer={user} />
 
       <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row">
         {/*

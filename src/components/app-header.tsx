@@ -2,6 +2,7 @@ import Link from "next/link";
 import { TimeZoneSelect } from "@/components/timezone-select";
 import { AccountMenu } from "@/components/account-menu";
 import { updateTimezoneAction } from "@/app/actions";
+import { isSiteAdmin } from "@/lib/site-admin";
 
 interface AppHeaderProps {
   user: {
@@ -65,7 +66,11 @@ export function AppHeader({ user, activeNav }: AppHeaderProps) {
             </button>
           </form>
 
-          <AccountMenu user={user} />
+          {/*
+            Resolved here, in a Server Component, so the menu only ever gets
+            a boolean — ADMIN_EMAILS itself never reaches the client bundle.
+          */}
+          <AccountMenu user={user} isSiteAdmin={isSiteAdmin(user.email)} />
         </div>
       </div>
 

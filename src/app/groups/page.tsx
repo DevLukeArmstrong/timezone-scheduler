@@ -4,6 +4,7 @@ import { getUserById } from "@/lib/services/users";
 import { listGroupMembers, listGroupsForUser } from "@/lib/services/groups";
 import { AppHeader } from "@/components/app-header";
 import { CreateGroupForm } from "@/components/create-group-form";
+import { GamerOfTheMonthPopup } from "@/components/gamer-of-the-month-popup";
 import { GroupManagementCard } from "@/components/group-management-card";
 
 export default async function GroupsPage() {
@@ -22,6 +23,7 @@ export default async function GroupsPage() {
   return (
     <div className="flex min-h-full flex-col bg-zinc-50 dark:bg-zinc-950">
       <AppHeader user={user} activeNav="groups" />
+      <GamerOfTheMonthPopup viewer={user} />
 
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6">
         <div>
