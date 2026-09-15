@@ -12,11 +12,16 @@
 #
 # Usage:
 #   cp .env.example .env         # fill in POSTGRES_HOST, POSTGRES_PASSWORD, AUTH_SECRET, CLOUDFLARE_TUNNEL_TOKEN
-#   docker compose run --rm migrate   # applies any pending migrations against postgres-db
-#   docker compose up -d              # app + cloudflared
+#   docker compose run --rm --build migrate   # applies any pending migrations against postgres-db
+#   docker compose up -d --build app          # app (+ cloudflared, first time)
+#
+# Order matters and so does --build, on BOTH lines: `run` reuses the last
+# built image unless told otherwise, so without it a release that adds a
+# migration reports "No pending migrations" against a stale copy of
+# prisma/migrations while the freshly built app expects the new schema.
 
 services:
-  # One-off: `docker compose run --rm migrate`. Uses the `builder` stage,
+  # One-off: `docker compose run --rm --build migrate`. Uses the `builder` stage,
   # which still has the Prisma CLI (the slim `runner` image the app runs
   # from does not). Not started by `docker compose up`.
   migrate:
