@@ -22,7 +22,27 @@ const PUBLIC_USER_SELECT = {
   notifyNewAvailability: true,
   peakStartHour: true,
   peakEndHour: true,
+  dismissedGamerOfTheMonthId: true,
 } satisfies { [K in keyof PublicUser]: true };
+
+/** A member as shown in the site admin's "feature this person" picker. */
+export interface UserSummary {
+  id: string;
+  name: string | null;
+  email: string;
+}
+
+/**
+ * Every account, for the site admin's gamer-of-the-month picker. This is
+ * the one place the app lists users outside a group's own member list —
+ * callers must gate it behind `isSiteAdmin` (src/lib/site-admin.ts).
+ */
+export async function listUsers(): Promise<UserSummary[]> {
+  const users = await db.user.findMany({
+    select: { id: true, name: true, email: true },
+  });
+  return users.sort((a, b) => (a.name ?? a.email).localeCompare(b.name ?? b.email));
+}
 
 export interface CreateUserInput {
   email: string;

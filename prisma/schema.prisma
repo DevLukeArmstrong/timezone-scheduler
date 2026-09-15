@@ -25,9 +25,9 @@ model User {
   /// Credentials provider's authorize() to verify a login attempt.
   passwordHash String
   /// IANA timezone identifier used for display (e.g. America/Los_Angeles).
-  timezone  String   @default("UTC")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  timezone     String   @default("UTC")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   /// Group notifications go to a shared Discord channel, so "opting out"
   /// can't hide a post from one person — these flags control whether the
@@ -36,10 +36,10 @@ model User {
   /// password reset, which has no preference.
   ///
   /// Name me in the weekly "add your availability" reminder when I haven't.
-  notifyReminder Boolean @default(true)
+  notifyReminder        Boolean @default(true)
   /// Name me in quorum ("N of you are free …") alerts. Off still counts me
   /// toward the quorum — the others need to know — it just doesn't call me out.
-  notifyOverlap Boolean @default(true)
+  notifyOverlap         Boolean @default(true)
   /// Announce it to the group's channel when I add availability.
   notifyNewAvailability Boolean @default(true)
 
@@ -51,12 +51,49 @@ model User {
   peakStartHour Int @default(9)
   peakEndHour   Int @default(24)
 
+  /// The "gamer of the month" popup this user ticked "don't show this again"
+  /// on. The popup renders whenever a feature exists whose id differs from
+  /// this, so publishing a new feature (new id) shows it to everyone again
+  /// while editing the current one in place does not. A column rather than
+  /// a per-month table because only one feature is ever live at a time, and
+  /// it rides along on the `User` row every page already loads — dismissal
+  /// is cross-device without an extra query. See `GamerOfTheMonth`.
+  dismissedGamerOfTheMonthId String?
+
   availabilitySlots   AvailabilitySlot[]
   ownedGroups         Group[]
   groupMemberships    GroupMembership[]
   notificationLogs    NotificationLog[]
   passwordResetTokens PasswordResetToken[]
   favoriteTimeZones   FavoriteTimeZone[]
+
+  dismissedGamerOfTheMonth GamerOfTheMonth?  @relation("DismissedBy", fields: [dismissedGamerOfTheMonthId], references: [id], onDelete: SetNull)
+  gamerOfTheMonthFeatures  GamerOfTheMonth[] @relation("FeaturedUser")
+}
+
+/// The site-wide "gamer of the month" popup — a member the site admin has
+/// picked, with a title, a blurb, and optionally a picture and a YouTube
+/// clip. At most one row exists: publishing a new one deletes the old (see
+/// src/lib/services/gamer-of-the-month.ts), which is also what re-shows the
+/// popup to people who dismissed the previous one (`User.dismissedGamerOfTheMonthId`).
+/// There is no history — this is a one-person curation tool, not a CMS.
+model GamerOfTheMonth {
+  id             String   @id @default(cuid())
+  /// The featured member.
+  userId         String
+  title          String
+  blurb          String
+  /// An https URL to a picture; rendered with a plain `<img>`, never
+  /// proxied through the image optimizer. Null shows no picture.
+  imageUrl       String?
+  /// The 11-character YouTube video id, already parsed out of whatever
+  /// URL form the admin pasted (see src/lib/youtube.ts). Null embeds nothing.
+  youtubeVideoId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user        User   @relation("FeaturedUser", fields: [userId], references: [id], onDelete: Cascade)
+  dismissedBy User[] @relation("DismissedBy")
 }
 
 /// One saved time zone a user wants converted-time previews for while adding
@@ -77,24 +114,24 @@ model FavoriteTimeZone {
 }
 
 model AvailabilitySlot {
-  id          String   @id @default(cuid())
-  userId      String
+  id      String  @id @default(cuid())
+  userId  String
   /// Null means "personal dashboard availability"; set means "this user's
   /// availability inside that specific group" — same table, scoped by group.
-  groupId     String?
+  groupId String?
 
   /// Shared id when one wall-clock window is copied into multiple groups at
   /// once. Null for slots created singly (or before batching existed). Lets
   /// the owner edit/delete every copy in the set together.
-  batchId     String?
+  batchId String?
 
   /// Start of the free window, stored as a UTC instant.
   /// For recurring slots this is the first concrete occurrence (for indexing /
   /// NOT NULL); expansion always reads {@link RecurrenceRule}.
-  startTime   DateTime @db.Timestamptz
+  startTime DateTime @db.Timestamptz
 
   /// End of the free window, stored as a UTC instant.
-  endTime     DateTime @db.Timestamptz
+  endTime DateTime @db.Timestamptz
 
   createdAt DateTime @default(now())
 
@@ -124,7 +161,7 @@ model RecurrenceRule {
   /// Minutes from local midnight for the daily window end (0–1439).
   /// When `endMinute < startMinute`, the window spans midnight into the next
   /// local calendar day (e.g. 17:00–02:00).
-  endMinute Int
+  endMinute   Int
 
   /// Bitmask of weekdays: bit 0 = Monday … bit 6 = Sunday.
   /// Null means every day (still subject to the optional date range).
@@ -154,12 +191,12 @@ model RecurrenceException {
 }
 
 model Group {
-  id          String   @id @default(cuid())
-  name        String
-  ownerId     String
+  id                String    @id @default(cuid())
+  name              String
+  ownerId           String
   /// Opaque, unguessable join token — the invite link is `/groups/join/<inviteToken>`.
   /// Never derived from `id`, so knowing a group's id doesn't let you join it.
-  inviteToken String   @unique
+  inviteToken       String    @unique
   /// Discord incoming-webhook URL for this group's channel; null means the
   /// group gets no Discord posts. A bearer credential — anyone holding it can
   /// post to the channel — so it is never sent to the client, only a
@@ -167,15 +204,15 @@ model Group {
   discordWebhookUrl String?
   /// How many members must be free at the same time before the group's
   /// channel gets a "N of you are free" post. Admin-editable; min 2.
-  quorumThreshold Int @default(3)
+  quorumThreshold   Int       @default(3)
   /// Set whenever availability in this group changes (slot added/removed,
   /// member removed, threshold changed). The scheduler re-evaluates quorum
   /// for a group once this is a couple of minutes old — so a burst of edits
   /// is one evaluation, not one per keystroke — then clears it. Null means
   /// nothing has changed since the last evaluation.
-  quorumDirtyAt DateTime? @db.Timestamptz
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  quorumDirtyAt     DateTime? @db.Timestamptz
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   owner             User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   memberships       GroupMembership[]

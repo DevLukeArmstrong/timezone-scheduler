@@ -52,5 +52,6 @@ export type {
   RecurrenceException,
   NotificationLog,
   PasswordResetToken,
+  GamerOfTheMonth,
 } from "../../prisma/generated/client";
 export { Prisma, GroupRole, NotificationType } from "../../prisma/generated/client";
