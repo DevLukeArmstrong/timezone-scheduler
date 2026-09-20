@@ -110,7 +110,7 @@ const BUTTON_ROW_CLASSNAME = "flex items-center justify-end gap-2 pt-1";
 const CANCEL_BUTTON_CLASSNAME =
   "rounded-lg px-3 py-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200";
 const SAVE_BUTTON_CLASSNAME =
-  "rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300";
+  "rounded-lg bg-brand-800 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-60 dark:bg-brand-400 dark:text-brand-950 dark:hover:bg-brand-300";
 
 interface EditOneOffFormProps {
   slotId: string;
