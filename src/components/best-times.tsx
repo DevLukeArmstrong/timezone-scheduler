@@ -63,8 +63,11 @@ export function BestTimes({
 
       {windows.length === 0 ? (
         <p className="mt-2 text-sm text-zinc-400 dark:text-zinc-500">
-          Nobody overlaps yet this week — add your availability on the left, or
-          nudge the group to add theirs.
+          Nobody overlaps yet this week — add your availability in the form
+          {" "}
+          <span className="lg:hidden">below</span>
+          <span className="hidden lg:inline">on the left</span>, or nudge the
+          group to add theirs.
         </p>
       ) : (
         <ol className="mt-2 space-y-1">

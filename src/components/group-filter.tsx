@@ -81,13 +81,19 @@ export function GroupFilter({ basePath, groups, selectedIds, extraQuery }: Group
           </Link>
         );
       })}
-      <span className="mx-1 h-4 w-px bg-zinc-200 dark:bg-zinc-700" aria-hidden="true" />
-      <Link href={allHref} className={QUICK_LINK_CLASSNAME}>
-        All
-      </Link>
-      <Link href={noneHref} className={QUICK_LINK_CLASSNAME}>
-        None
-      </Link>
+      {/*
+        One unit pushed to the right, so on a phone — where the pills fill
+        the row — it wraps as a whole rather than stranding a divider at the
+        end of one line and "All None" at the start of the next.
+      */}
+      <span className="ml-auto flex items-center gap-2">
+        <Link href={allHref} className={QUICK_LINK_CLASSNAME}>
+          All
+        </Link>
+        <Link href={noneHref} className={QUICK_LINK_CLASSNAME}>
+          None
+        </Link>
+      </span>
     </div>
   );
 }

@@ -20,7 +20,7 @@ import {
 const initialState: CalendarActionState = {};
 
 export const INPUT_CLASSNAME =
-  "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100";
+  "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-brand-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100";
 
 export const LABEL_CLASSNAME =
   "text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400";
@@ -146,7 +146,7 @@ export function CalendarAvailabilityForm({
                 name="groupIds"
                 value={group.id}
                 defaultChecked={checkedIds.has(group.id)}
-                className="size-3.5 shrink-0 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-500 dark:border-zinc-600 dark:bg-zinc-900"
+                className="size-3.5 shrink-0 rounded border-zinc-300 accent-brand-700 focus:ring-brand-500 dark:border-zinc-600 dark:bg-zinc-900"
               />
               <span className="truncate">{group.name}</span>
             </label>
@@ -388,7 +388,7 @@ export function CalendarAvailabilityForm({
       <button
         type="submit"
         disabled={pending}
-        className="w-full rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+        className="w-full rounded-lg bg-brand-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-60 dark:bg-brand-400 dark:text-brand-950 dark:hover:bg-brand-300"
       >
         {pending ? "Saving…" : "Add availability"}
       </button>

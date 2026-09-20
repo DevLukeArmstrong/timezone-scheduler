@@ -14,7 +14,7 @@ interface TimeZoneSelectProps {
 }
 
 const INPUT_CLASSNAME =
-  "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100";
+  "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-brand-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100";
 
 /** How many filtered matches to render at once — plenty for a filtered list, cheap to paint unfiltered. */
 const MAX_VISIBLE_OPTIONS = 50;

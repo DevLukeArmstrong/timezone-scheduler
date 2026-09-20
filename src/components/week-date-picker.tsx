@@ -32,7 +32,7 @@ export function WeekDatePicker({ basePath, defaultValue, extraQuery }: WeekDateP
         const href = `${basePath}?date=${value}`;
         router.push(extraQuery ? `${href}&${extraQuery}` : href);
       }}
-      className="rounded-lg border border-zinc-300 bg-white px-2.5 py-1.5 text-sm text-zinc-700 focus:border-zinc-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+      className="rounded-lg border border-zinc-300 bg-white px-2.5 py-1.5 text-sm text-zinc-700 focus:border-brand-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
     />
   );
 }

@@ -10,6 +10,28 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /*
+   * Brand green, anchored on the icon's forest green at 800. Used for the
+   * things that say "this is the primary thing": filled buttons, the active
+   * nav link, the active calendar view, focus rings. Everything else stays
+   * zinc, and the emerald "free / selected" states are deliberately left
+   * alone so "green = someone is available" keeps its meaning.
+   *
+   * Light mode fills with 800 (white text); dark mode fills with 400
+   * (near-black text), since a forest green on a black page reads as mud.
+   */
+  --color-brand-50: #f1f9f3;
+  --color-brand-100: #dcf1e2;
+  --color-brand-200: #b9e3c6;
+  --color-brand-300: #8ad3a4;
+  --color-brand-400: #3fbf72;
+  --color-brand-500: #24a15a;
+  --color-brand-600: #1a8448;
+  --color-brand-700: #156b3a;
+  --color-brand-800: #0f5a2a;
+  --color-brand-900: #0b4320;
+  --color-brand-950: #062a14;
 }
 
 @media (prefers-color-scheme: dark) {
