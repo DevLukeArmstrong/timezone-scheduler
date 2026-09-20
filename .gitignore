@@ -44,6 +44,10 @@ dev.db-journal
 # vercel
 .vercel
 
+# database dumps written by the `backup` service — these contain every user
+# row, password hashes included, and must never be committed
+/backups
+
 # Claude Code local settings (permission preferences etc.) — personal, not shared.
 # .claude/launch.json (dev server config) is intentionally still tracked.
 .claude/settings.local.json

@@ -20,6 +20,54 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Database backups
+
+Production data lives in the `postgres-db` LXC, which is outside the compose
+stack, so the `backup` service in `docker-compose.yml` is a Postgres client
+container that dumps it over the network once a day.
+
+```bash
+docker compose up -d backup        # start the nightly schedule
+docker compose logs -f backup      # it logs every run, and every failure
+```
+
+Dumps land in `./backups` (git-ignored, mode 0600 — they contain password
+hashes) as `timezone_scheduler_db-<UTC timestamp>.dump`, in `pg_dump`'s custom
+format. Each one is verified by reading its table of contents back before it's
+published under its final name, so a truncated dump never sits in the
+directory pretending to be restorable.
+
+Old dumps are pruned after each **successful** run, and never below a floor of
+`BACKUP_MIN_KEEP` files — a stretch of failed backups can't age out the good
+ones. Schedule, retention and destination are all configurable; see the
+**Database backups** section of `.env.example`.
+
+On demand:
+
+```bash
+docker compose run --rm backup /scripts/pg-backup.sh     # back up now
+docker compose run --rm backup /scripts/pg-restore.sh    # list what you have
+```
+
+### Restoring
+
+Restoring **replaces** the current database with the contents of the dump, so
+stop the app first — both to keep it from writing mid-restore and to free the
+locks it holds on the tables being dropped:
+
+```bash
+docker compose stop app
+docker compose run --rm backup /scripts/pg-restore.sh timezone_scheduler_db-20260101T033000Z.dump
+docker compose up -d app
+```
+
+It asks you to type the database name before doing anything (`--yes` skips the
+prompt for scripted use), and runs in a single transaction — if the restore
+fails part way, the database is left exactly as it was.
+
+A backup you have never restored is a guess. Try one into a scratch database
+before you need it for real.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

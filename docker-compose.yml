@@ -1,5 +1,6 @@
-# Full self-hosted stack for Proxmox: the app, a one-off migration runner,
-# and a Cloudflare Tunnel connector that publishes the app to the internet.
+# Full self-hosted stack for Proxmox: the app, a one-off migration runner, a
+# nightly database backup, and a Cloudflare Tunnel connector that publishes
+# the app to the internet.
 #
 # Postgres is NOT in this file — it's the existing `postgres-db` LXC (CT 101
 # on the `proxmox` node, 10.0.0.195), already running with real schema and
@@ -13,7 +14,7 @@
 # Usage:
 #   cp .env.example .env         # fill in POSTGRES_HOST, POSTGRES_PASSWORD, AUTH_SECRET, CLOUDFLARE_TUNNEL_TOKEN
 #   docker compose run --rm --build migrate   # applies any pending migrations against postgres-db
-#   docker compose up -d --build app          # app (+ cloudflared, first time)
+#   docker compose up -d --build app backup   # app (+ cloudflared, first time) and nightly backups
 #
 # Order matters and so does --build, on BOTH lines: `run` reuses the last
 # built image unless told otherwise, so without it a release that adds a
@@ -45,6 +46,46 @@ services:
     # the LAN for debugging, then comment it back out.
     # ports:
     #   - "3000:3000"
+
+  # Nightly `pg_dump` of postgres-db to ./backups on this host, with pruning.
+  #
+  # It has to be its own service because the database it backs up isn't in this
+  # file — it's the postgres-db LXC, so this is a Postgres *client* container
+  # dialling POSTGRES_HOST, not a sidecar of a local server. The image tag is
+  # what pins the client version: pg_dump refuses to dump a server newer than
+  # itself, so if postgres-db is ever upgraded past 17, bump this tag to match
+  # before the next run.
+  #
+  # Started only when named explicitly — nothing here depends on it, so plain
+  # `docker compose up -d app` would leave it stopped and the backups silently
+  # not happening. Check on it with `docker compose logs -f backup`; it logs
+  # every run and every failure.
+  #
+  # On demand, outside the schedule:
+  #   docker compose run --rm backup /scripts/pg-backup.sh    # back up now
+  #   docker compose run --rm backup /scripts/pg-restore.sh   # list backups
+  backup:
+    image: postgres:17
+    restart: unless-stopped
+    entrypoint: ["/scripts/backup-loop.sh"]
+    environment:
+      # The standard libpq variables, so neither script has to build a
+      # connection string or carry the password itself.
+      PGHOST: ${POSTGRES_HOST:?set this in .env to postgres-db's IP}
+      PGPORT: "5432"
+      PGUSER: scheduler_user
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set this in .env}
+      PGDATABASE: timezone_scheduler_db
+      # BACKUP_TIME is read in this timezone. Default Etc/UTC, so 03:30 means
+      # 03:30 UTC unless you set TZ to something local.
+      TZ: ${TZ:-Etc/UTC}
+      BACKUP_TIME: ${BACKUP_TIME:-03:30}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_MIN_KEEP: ${BACKUP_MIN_KEEP:-7}
+      BACKUP_ON_START: ${BACKUP_ON_START:-false}
+    volumes:
+      - ./scripts/backup:/scripts:ro
+      - ${BACKUP_HOST_DIR:-./backups}:/backups
 
   # The public front door. Authenticates to Cloudflare with a tunnel token
   # (created in the Cloudflare dashboard under Zero Trust → Networks →
