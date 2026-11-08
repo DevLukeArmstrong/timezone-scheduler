@@ -38,6 +38,22 @@ services:
       context: .
       target: runner
     restart: unless-stopped
+    # Without these the container has no resolver at all. Docker's embedded
+    # resolver (127.0.0.11) answers container names itself and forwards
+    # everything else to the host's upstream nameservers — but the host's
+    # /etc/resolv.conf holds only the systemd-resolved stub (127.0.0.53),
+    # and Docker drops loopback addresses when building this list, because
+    # inside a container 127.0.0.53 is the container's own loopback. It is
+    # then left with nothing, writes "NO EXTERNAL NAMESERVERS DEFINED" into
+    # the container's resolv.conf, and every public hostname fails with
+    # EAI_AGAIN: Discord webhooks, Resend, the lot. Postgres is unaffected
+    # either way — POSTGRES_HOST is an IP, so nothing resolves it.
+    #
+    # Point these at a LAN resolver instead if you want internal names to
+    # work in here; nothing in the app needs one today.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     env_file: .env
     environment:
       DATABASE_URL: postgresql://scheduler_user:${POSTGRES_PASSWORD:?set this in .env}@${POSTGRES_HOST:?set this in .env to postgres-db's IP}:5432/timezone_scheduler_db?schema=public
