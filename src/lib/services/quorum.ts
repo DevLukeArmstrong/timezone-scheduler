@@ -1,5 +1,10 @@
 import { db } from "@/lib/db";
-import { discordTimeRange, escapeDiscordMarkdown, sendDiscordMessage } from "@/lib/discord";
+import { discordTimeRange, escapeDiscordMarkdown } from "@/lib/discord";
+import {
+  collectGroupDiscordTargets,
+  deliverToGroupDiscordTargets,
+  GROUP_HAS_DISCORD_TARGET,
+} from "@/lib/services/discord-targets";
 import {
   findQuorumWindows,
   reconcileQuorumWindows,
@@ -31,13 +36,14 @@ export interface QuorumEvaluationSummary {
 
 /**
  * Evaluates every group that has been dirty for at least
- * {@link QUORUM_DEBOUNCE_MS} and has a Discord channel. Called once per
+ * {@link QUORUM_DEBOUNCE_MS} and has somewhere to post — its own channel,
+ * or a member who has connected their own server. Called once per
  * scheduler tick; `ignoreDebounce` is for the manual cron route.
  *
- * Groups without a webhook are left dirty rather than evaluated: the flag
- * then survives until an admin connects a channel, at which point the
- * first evaluation posts every quorum currently on the calendar — a
- * reasonable "here's what's on" welcome.
+ * Groups with no target at all are left dirty rather than evaluated: the
+ * flag then survives until someone connects one, at which point the first
+ * evaluation posts every quorum currently on the calendar — a reasonable
+ * "here's what's on" welcome.
  */
 export async function evaluateDirtyGroupQuorums(
   now: Date = new Date(),
@@ -45,7 +51,7 @@ export async function evaluateDirtyGroupQuorums(
 ): Promise<QuorumEvaluationSummary> {
   const cutoff = options.ignoreDebounce ? now : new Date(now.getTime() - QUORUM_DEBOUNCE_MS);
   const groups = await db.group.findMany({
-    where: { quorumDirtyAt: { not: null, lte: cutoff }, discordWebhookUrl: { not: null } },
+    where: { quorumDirtyAt: { not: null, lte: cutoff }, ...GROUP_HAS_DISCORD_TARGET },
     select: { id: true },
   });
 
@@ -82,12 +88,24 @@ export async function evaluateGroupQuorum(
       quorumDirtyAt: true,
       memberships: {
         select: {
-          user: { select: { id: true, name: true, email: true, notifyOverlap: true } },
+          userId: true,
+          discordWebhookUrl: true,
+          user: {
+            select: { id: true, name: true, email: true, notifyOverlap: true },
+          },
         },
       },
     },
   });
-  if (!group || !group.discordWebhookUrl) return "skipped";
+  if (!group) return "skipped";
+
+  // A group with no channel and no member-owned server has nowhere to post,
+  // so it stays dirty rather than being evaluated — see the note above.
+  const targets = collectGroupDiscordTargets(group, {
+    memberFilter: (userId) =>
+      group.memberships.find((m) => m.userId === userId)?.user.notifyOverlap === true,
+  });
+  if (targets.length === 0) return "skipped";
 
   const dirtyAt = group.quorumDirtyAt;
   const members = new Map(group.memberships.map(({ user }) => [user.id, user]));
@@ -135,13 +153,17 @@ export async function evaluateGroupQuorum(
           .map((user) => escapeDiscordMarkdown(user.name?.trim() || user.email)),
       })),
     );
-    try {
-      await sendDiscordMessage(group.discordWebhookUrl, content);
-      outcome = "posted";
-    } catch (error) {
-      console.error(`Quorum alert post failed for group ${groupId}:`, error);
-      return "failed";
-    }
+    const delivery = await deliverToGroupDiscordTargets(
+      targets,
+      content,
+      `quorum group ${groupId}`,
+    );
+    // Only a total failure is retryable. If some targets took it, the alert
+    // rows below must be written, or the next tick would re-post the same
+    // windows to everyone who already got them just to chase the one
+    // member whose webhook is broken.
+    if (delivery.sent === 0) return "failed";
+    outcome = "posted";
 
     for (const { alertId } of plan.upgrade) {
       await db.quorumAlert.update({ where: { id: alertId }, data: { everyone: true } });

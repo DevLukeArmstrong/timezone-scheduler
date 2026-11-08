@@ -3,8 +3,12 @@ import {
   discordTimeRange,
   discordTimestamp,
   escapeDiscordMarkdown,
-  sendDiscordMessage,
 } from "@/lib/discord";
+import {
+  collectGroupDiscordTargets,
+  deliverToGroupDiscordTargets,
+  GROUP_HAS_DISCORD_TARGET,
+} from "@/lib/services/discord-targets";
 import { WEEKDAY_BITS, type RecurrenceRuleInput } from "@/lib/recurrence";
 import { formatLocalDateParts, formatMinutesAsTime } from "@/lib/timezone";
 
@@ -26,13 +30,19 @@ export interface AnnounceNewAvailabilityInput {
 }
 
 /**
- * Posts "<name> is free <when>" to each group's Discord channel. Runs
- * after the response has been sent (the calendar action wraps it in
- * `after()`), so Discord latency never delays the UI and a Discord failure
- * never fails the save — every error path here logs and returns.
+ * Posts "<name> is free <when>" to each group's Discord channel, and to the
+ * server of any member who has connected their own. Runs after the response
+ * has been sent (the calendar action wraps it in `after()`), so Discord
+ * latency never delays the UI and a Discord failure never fails the save —
+ * every error path here logs and returns.
  *
- * Honours the *actor's* `notifyNewAvailability`: on a shared channel the
- * only opt-out that can be enforced is "don't announce what I do".
+ * Honours the *actor's* `notifyNewAvailability`: that opt-out means "don't
+ * announce what I do", so it suppresses the announcement everywhere.
+ *
+ * Personal webhooks additionally honour the *recipient's* own
+ * `notifyNewAvailability`, which a shared channel could never do — and the
+ * actor's own server is skipped, since echoing your own action back at you
+ * is noise. The group channel is unaffected by both.
  */
 export async function announceNewAvailability(
   input: AnnounceNewAvailabilityInput,
@@ -45,18 +55,34 @@ export async function announceNewAvailability(
     if (!actor || !actor.notifyNewAvailability || input.groupIds.length === 0) return;
 
     const groups = await db.group.findMany({
-      where: { id: { in: input.groupIds }, discordWebhookUrl: { not: null } },
-      select: { id: true, name: true, discordWebhookUrl: true },
+      where: { id: { in: input.groupIds }, ...GROUP_HAS_DISCORD_TARGET },
+      select: {
+        id: true,
+        name: true,
+        discordWebhookUrl: true,
+        memberships: {
+          select: {
+            userId: true,
+            discordWebhookUrl: true,
+            user: { select: { notifyNewAvailability: true } },
+          },
+        },
+      },
     });
 
     const who = escapeDiscordMarkdown(actor.name?.trim() || actor.email);
     for (const group of groups) {
+      const wantsIt = new Map(
+        group.memberships.map((m) => [m.userId, m.user.notifyNewAvailability]),
+      );
+      const targets = collectGroupDiscordTargets(group, {
+        excludeMemberId: input.actorUserId,
+        memberFilter: (userId) => wantsIt.get(userId) === true,
+      });
+      if (targets.length === 0) continue;
+
       const content = newAvailabilityMessage(who, group.name, input.window);
-      try {
-        await sendDiscordMessage(group.discordWebhookUrl!, content);
-      } catch (error) {
-        console.error(`Discord new-availability post failed for group ${group.id}:`, error);
-      }
+      await deliverToGroupDiscordTargets(targets, content, `new-availability group ${group.id}`);
     }
   } catch (error) {
     console.error("announceNewAvailability failed:", error);
