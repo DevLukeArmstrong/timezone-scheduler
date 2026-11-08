@@ -58,14 +58,19 @@ export function CalendarNav({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
+      {/*
+        "Prev"/"Next" only from `sm` up: with the labels, the four controls
+        overflow a 375px phone and the date picker wraps onto its own line.
+        The arrows carry the meaning; the aria-label carries the text.
+      */}
       <Link href={prevHref} className={BUTTON_CLASSNAME} aria-label={`Previous ${periodLabel}`}>
-        ← Prev
+        ←<span className="hidden sm:inline"> Prev</span>
       </Link>
       <Link href={todayHref} className={BUTTON_CLASSNAME}>
         Today
       </Link>
       <Link href={nextHref} className={BUTTON_CLASSNAME} aria-label={`Next ${periodLabel}`}>
-        Next →
+        <span className="hidden sm:inline">Next </span>→
       </Link>
       <CalendarDatePicker
         key={dateValue}

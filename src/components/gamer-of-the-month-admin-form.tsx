@@ -12,11 +12,11 @@ import { youTubeWatchUrl } from "@/lib/youtube";
 const initialState: GamerOfTheMonthActionState = {};
 
 const INPUT_CLASS =
-  "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100";
+  "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-brand-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100";
 const LABEL_CLASS =
   "text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400";
 const PRIMARY_BUTTON_CLASS =
-  "rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300";
+  "rounded-lg bg-brand-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-60 dark:bg-brand-400 dark:text-brand-950 dark:hover:bg-brand-300";
 const SECONDARY_BUTTON_CLASS =
   "rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800";
 
@@ -133,8 +133,10 @@ export function GamerOfTheMonthAdminForm({ members, current }: GamerOfTheMonthAd
             className={INPUT_CLASS}
           />
           <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            Must be https. Discord <em>attachment</em> links expire after a day —
-            use a Discord avatar link, Imgur, or similar.
+            Needs a link to the picture itself, not the page it&apos;s on —
+            right-click the picture and &ldquo;Copy image address&rdquo; (it
+            usually ends in .jpg or .png). Imgur and GitHub work; Google Drive
+            doesn&apos;t, and Discord <em>attachment</em> links expire after a day.
           </p>
         </div>
 

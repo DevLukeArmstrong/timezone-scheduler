@@ -88,6 +88,10 @@ async function normalizeInput(input: GamerOfTheMonthInput) {
     if (rawImageUrl.length > IMAGE_URL_MAX_LENGTH) {
       throw new ValidationError("Image URL is too long.");
     }
+    const pageLinkHint = describeImagePageLink(parsed);
+    if (pageLinkHint) {
+      throw new ValidationError(pageLinkHint);
+    }
     imageUrl = rawImageUrl;
   }
 
@@ -108,6 +112,33 @@ async function normalizeInput(input: GamerOfTheMonthInput) {
   }
 
   return { userId: user.id, title, blurb, imageUrl, youtubeVideoId };
+}
+
+/**
+ * The mistake the URL field invites: pasting the link to the *page* an
+ * image lives on rather than the image itself. A page URL saves fine and
+ * then renders as a broken picture, so catch the hosts people actually use
+ * and say what to paste instead. Returns the error message, or `null` when
+ * the URL isn't a recognised page link. Deliberately not a whitelist —
+ * plenty of image CDNs have no file extension at all.
+ */
+export function describeImagePageLink(url: URL): string | null {
+  const host = url.hostname.toLowerCase();
+  const copyHint = "right-click the picture and choose “Copy image address”, then paste that";
+
+  if (host === "imgur.com" || host === "www.imgur.com" || host === "m.imgur.com") {
+    return `That's the Imgur page, not the picture — ${copyHint} (it starts with i.imgur.com).`;
+  }
+  if (host === "drive.google.com" || host === "docs.google.com" || host === "photos.google.com") {
+    return "Google Drive and Google Photos share links open a viewer page, not the image, so they can't be used here — upload it to Imgur or GitHub instead.";
+  }
+  if (host === "discord.com" || host === "discordapp.com") {
+    return `That's a Discord link, not the picture — ${copyHint} (it starts with cdn.discordapp.com).`;
+  }
+  if ((host === "github.com" || host === "www.github.com") && !url.pathname.includes("/user-attachments/")) {
+    return `That's a GitHub page, not the picture — ${copyHint}.`;
+  }
+  return null;
 }
 
 function requireSiteAdmin(actingEmail: string): void {

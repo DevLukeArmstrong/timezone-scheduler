@@ -449,7 +449,7 @@ export async function sendGroupDiscordTestMessage(
   try {
     await sendDiscordMessage(
       group.discordWebhookUrl,
-      `✅ Timezone Scheduler is connected to **${group.name}**. Availability updates and reminders will show up here.`,
+      `✅ Friendslop Scheduler is connected to **${group.name}**. Availability updates and reminders will show up here.`,
     );
   } catch (error) {
     if (error instanceof DiscordWebhookError) {

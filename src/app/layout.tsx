@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Timezone Scheduler",
+  title: "Friendslop Scheduler",
   description:
     "Share availability across time zones with your groups, in everyone's local time.",
 };

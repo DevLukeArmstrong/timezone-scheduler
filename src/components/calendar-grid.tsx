@@ -461,10 +461,10 @@ export function CalendarGrid({
               </span>
             );
           })}
-          <span>
+          <span className="basis-full sm:basis-auto sm:before:content-['·_']">
             {legendThreshold === null
-              ? "· green marks a window that meets its group's quorum"
-              : `· green from ${legendThreshold} — this group's quorum, the same one the Discord alert posts about`}
+              ? "Green marks a window that meets its group's quorum"
+              : `Green from ${legendThreshold} — this group's quorum, the same one the Discord alert posts about`}
           </span>
         </div>
       )}

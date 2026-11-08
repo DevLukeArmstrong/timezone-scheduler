@@ -78,7 +78,7 @@ export function AccountNotificationsForm({
               type="checkbox"
               name={toggle.name}
               defaultChecked={defaults[toggle.name]}
-              className="mt-0.5 size-3.5 shrink-0 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-500 dark:border-zinc-600 dark:bg-zinc-900"
+              className="mt-0.5 size-3.5 shrink-0 rounded border-zinc-300 accent-brand-700 focus:ring-brand-500 dark:border-zinc-600 dark:bg-zinc-900"
             />
             <span>
               <span className="block font-medium text-zinc-800 dark:text-zinc-200">
@@ -104,7 +104,7 @@ export function AccountNotificationsForm({
       <button
         type="submit"
         disabled={pending}
-        className="w-full rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+        className="w-full rounded-lg bg-brand-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-60 dark:bg-brand-400 dark:text-brand-950 dark:hover:bg-brand-300"
       >
         {pending ? "Saving…" : "Save notification preferences"}
       </button>

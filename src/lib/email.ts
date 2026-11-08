@@ -38,16 +38,16 @@ export async function sendEmail({ to, subject, html, text }: SendEmailInput): Pr
 
 /** Body for the forgot-password reset link email. */
 export function passwordResetEmail(resetUrl: string): { subject: string; html: string; text: string } {
-  const subject = "Reset your Timezone Scheduler password";
+  const subject = "Reset your Friendslop Scheduler password";
   const text = [
-    "We received a request to reset your Timezone Scheduler password.",
+    "We received a request to reset your Friendslop Scheduler password.",
     "",
     `Choose a new password: ${resetUrl}`,
     "",
     "This link expires in 1 hour. If you didn't request this, you can safely ignore this email.",
   ].join("\n");
   const html = `
-    <p>We received a request to reset your Timezone Scheduler password.</p>
+    <p>We received a request to reset your Friendslop Scheduler password.</p>
     <p><a href="${resetUrl}">Choose a new password</a></p>
     <p>This link expires in 1 hour. If you didn't request this, you can safely ignore this email.</p>
   `.trim();

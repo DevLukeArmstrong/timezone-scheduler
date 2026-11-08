@@ -6,9 +6,9 @@ import {
 } from "@/lib/calendar";
 
 const BASE_CLASSNAME =
-  "rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors";
+  "flex-1 rounded-lg px-2.5 py-1.5 text-center text-sm font-medium transition-colors sm:flex-none";
 const ACTIVE_CLASSNAME =
-  "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900";
+  "bg-brand-800 text-white dark:bg-brand-400 dark:text-brand-950";
 const INACTIVE_CLASSNAME =
   "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800";
 
@@ -39,7 +39,9 @@ export function CalendarViewSwitcher({
 }: CalendarViewSwitcherProps) {
   return (
     <div
-      className="inline-flex rounded-lg border border-zinc-300 bg-white p-0.5 dark:border-zinc-700 dark:bg-zinc-900"
+      // Stretches across a phone (each option a third) and shrinks to fit
+      // its labels from `sm` up, where it sits inline with the nav.
+      className="flex w-full rounded-lg border border-zinc-300 bg-white p-0.5 sm:inline-flex sm:w-auto dark:border-zinc-700 dark:bg-zinc-900"
       role="group"
       aria-label="Calendar view"
     >

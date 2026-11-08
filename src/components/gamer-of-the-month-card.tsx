@@ -40,11 +40,11 @@ export function GamerOfTheMonthCard({ feature, isViewer, footer }: GamerOfTheMon
           src={feature.imageUrl}
           alt=""
           referrerPolicy="no-referrer"
-          className="max-h-72 w-full shrink-0 bg-zinc-100 object-cover dark:bg-zinc-800"
+          className="max-h-56 w-full shrink-0 bg-zinc-100 object-cover sm:max-h-72 dark:bg-zinc-800"
         />
       )}
 
-      <div className="space-y-4 p-6">
+      <div className="space-y-4 p-5 sm:p-6">
         <div className="space-y-1">
           <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-amber-600 dark:text-amber-400">
             <span aria-hidden="true">🏆</span>

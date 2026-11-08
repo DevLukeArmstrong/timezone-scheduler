@@ -73,9 +73,12 @@ export function GamerOfTheMonthDialog({ feature, isViewer }: GamerOfTheMonthDial
         // click landed on the backdrop, outside the card.
         if (event.target === event.currentTarget) event.currentTarget.close();
       }}
-      className="m-auto w-[calc(100%-2rem)] max-w-lg overflow-hidden rounded-2xl bg-white p-0 shadow-2xl backdrop:bg-zinc-950/60 backdrop:backdrop-blur-sm dark:bg-zinc-900"
+      // `dvh`, not `vh`: on iOS Safari `100vh` is the height with the
+      // toolbars *hidden*, so a `vh`-sized card runs under the bottom bar and
+      // the Close button ends up unreachable. `dvh` is the visible height.
+      className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-hidden rounded-2xl bg-white p-0 shadow-2xl backdrop:bg-zinc-950/60 backdrop:backdrop-blur-sm dark:bg-zinc-900"
     >
-      <div className="max-h-[calc(100vh-4rem)] overflow-y-auto">
+      <div className="max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
         <GamerOfTheMonthCard
           feature={feature}
           isViewer={isViewer}
@@ -86,14 +89,14 @@ export function GamerOfTheMonthDialog({ feature, isViewer }: GamerOfTheMonthDial
                   type="checkbox"
                   checked={dontShowAgain}
                   onChange={(event) => setDontShowAgain(event.target.checked)}
-                  className="size-3.5 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-500 dark:border-zinc-600 dark:bg-zinc-900"
+                  className="size-3.5 rounded border-zinc-300 accent-brand-700 focus:ring-brand-500 dark:border-zinc-600 dark:bg-zinc-900"
                 />
                 Don&apos;t show this again this month
               </label>
               <button
                 type="button"
                 onClick={() => dialogRef.current?.close()}
-                className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+                className="rounded-lg bg-brand-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 dark:bg-brand-400 dark:text-brand-950 dark:hover:bg-brand-300"
               >
                 Close
               </button>

@@ -1,4 +1,6 @@
+import Image from "next/image";
 import Link from "next/link";
+import icon from "@/app/icon.png";
 import { TimeZoneSelect } from "@/components/timezone-select";
 import { AccountMenu } from "@/components/account-menu";
 import { updateTimezoneAction } from "@/app/actions";
@@ -24,11 +26,15 @@ export function AppHeader({ user, activeNav }: AppHeaderProps) {
     <header className="sticky top-0 z-10 border-b border-zinc-200 bg-white/80 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/80">
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6">
         <div className="flex items-center gap-3">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-zinc-900 text-sm font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900">
-            TZ
-          </div>
+          {/*
+            `icon.png` doubles as the favicon (Next's app-icon file
+            convention), so the tab, the home-screen icon and the header all
+            come from one file. The picture is already a circle on a
+            transparent background, so no rounding is needed here.
+          */}
+          <Image src={icon} alt="" priority className="size-8 object-contain" />
           <span className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-            Timezone Scheduler
+            Friendslop Scheduler
           </span>
 
           <nav className="ml-4 hidden items-center gap-1 sm:flex">
@@ -38,7 +44,7 @@ export function AppHeader({ user, activeNav }: AppHeaderProps) {
                 href={link.href}
                 className={`rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors ${
                   activeNav === link.key
-                    ? "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50"
+                    ? "bg-brand-100 text-brand-900 dark:bg-brand-900 dark:text-brand-100"
                     : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
                 }`}
               >
@@ -81,7 +87,7 @@ export function AppHeader({ user, activeNav }: AppHeaderProps) {
             href={link.href}
             className={`rounded-lg px-2.5 py-1 text-sm font-medium transition-colors ${
               activeNav === link.key
-                ? "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50"
+                ? "bg-brand-100 text-brand-900 dark:bg-brand-900 dark:text-brand-100"
                 : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
             }`}
           >

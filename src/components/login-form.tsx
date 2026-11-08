@@ -1,7 +1,9 @@
 "use client";
 
 import { useActionState } from "react";
+import Image from "next/image";
 import Link from "next/link";
+import icon from "@/app/icon.png";
 import { loginAction, type LoginActionState } from "@/app/login/actions";
 
 const initialState: LoginActionState = {};
@@ -22,11 +24,12 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
       )}
 
       <div>
+        <Image src={icon} alt="" priority className="mb-3 size-14 object-contain" />
         <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
           Sign in
         </h1>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Welcome back to Timezone Scheduler.
+          Welcome back to Friendslop Scheduler.
         </p>
       </div>
 
@@ -44,7 +47,7 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
           required
           autoComplete="email"
           placeholder="you@example.com"
-          className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+          className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-brand-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
         />
       </div>
 
@@ -70,7 +73,7 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
           required
           autoComplete="current-password"
           placeholder="••••••••"
-          className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+          className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-brand-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
         />
       </div>
 
@@ -81,7 +84,7 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
       <button
         type="submit"
         disabled={pending}
-        className="w-full rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+        className="w-full rounded-lg bg-brand-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-60 dark:bg-brand-400 dark:text-brand-950 dark:hover:bg-brand-300"
       >
         {pending ? "Signing in…" : "Sign in"}
       </button>

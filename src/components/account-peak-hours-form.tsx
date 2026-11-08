@@ -12,7 +12,7 @@ const initialState: UpdatePeakHoursActionState = {};
 const LABEL_CLASSNAME =
   "text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400";
 const SELECT_CLASSNAME =
-  "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100";
+  "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-brand-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100";
 
 function formatHour(hour: number): string {
   if (hour === 0) return "12 AM";
@@ -128,7 +128,7 @@ export function AccountPeakHoursForm({
       <button
         type="submit"
         disabled={pending || !isValidRange}
-        className="w-full rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+        className="w-full rounded-lg bg-brand-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-60 dark:bg-brand-400 dark:text-brand-950 dark:hover:bg-brand-300"
       >
         {pending ? "Saving…" : "Save peak hours"}
       </button>
