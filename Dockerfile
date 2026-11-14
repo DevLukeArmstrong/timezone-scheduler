@@ -6,8 +6,23 @@
 # - `runner` only contains what `next build`'s `output: "standalone"` traced
 #   as actually required at runtime (see next.config.ts), which keeps the
 #   final image small and dependency-free.
-FROM node:20-bookworm-slim AS base
+# Node 24 (LTS), not 20: Node bundles its own copy of the IANA time zone
+# database, and Node 20 is end-of-life with tzdata 2025c — from before BC,
+# Alberta, the NWT and Manitoba moved to permanent daylight time on
+# 2026-11-01. Every server-side conversion for those zones (the calendar
+# render, saved slots, Discord posts) came out an hour off. See
+# prisma/migrations/20261114120000_fix_canada_permanent_dst_slots.
+#
+# Deploy with `docker compose build --pull` now and then: the major-version
+# tag picks up new tzdata in Node's patch releases, but only if the base
+# image is actually re-pulled rather than reused from the local cache.
+FROM node:24-bookworm-slim AS base
 WORKDIR /app
+# Refuse to build on a runtime whose tz data is older than the newest change
+# this app knows about, rather than quietly shipping times that are an hour
+# off. Raise MIN_TZDATA when a future tz change affects the group.
+ARG MIN_TZDATA=2026e
+RUN node -e "const v = process.versions.tz; if (v < process.argv[1]) { console.error('Node ' + process.version + ' has tzdata ' + v + ', need ' + process.argv[1] + ' or newer. Rebuild with --pull, or move to a newer Node base image.'); process.exit(1); } console.log('tzdata', v);" "$MIN_TZDATA"
 
 FROM base AS deps
 # better-sqlite3 has no prebuilt binary for every platform/Node-version
