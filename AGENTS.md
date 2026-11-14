@@ -35,10 +35,25 @@ docker compose up -d --build app
 docker compose up -d backup   # not a dependency of app; needs naming once
 ```
 
+Add `--pull` to the build now and then (e.g. `docker compose build --pull
+app migrate` before the steps above) so the Node base image picks up new
+time zone data — see the tzdata gotcha below.
+
 Deploy from `main`. Production once sat on a feature branch and a later
 `git checkout main` would have silently reverted several fixes at once.
 
 ## Gotchas worth not rediscovering
+
+- **Time zone maths is only as current as Node's bundled tzdata.** Every
+  conversion goes through `Intl` / `@date-fns/tz`, which read the IANA data
+  compiled into Node's ICU — not the OS's. Node 20 (tzdata 2025c) missed BC,
+  Alberta, the NWT and Manitoba going permanent-daylight on 2026-11-01, so
+  the server stored and posted those users' times an hour off while their
+  browsers (newer data) disagreed. The Dockerfile now refuses to build below
+  `MIN_TZDATA`, and `src/lib/tzdata.test.ts` fails on a stale local Node.
+  When a new tz change affects the group: bump `MIN_TZDATA`, rebuild with
+  `--pull`, and check whether saved one-off slots need a data migration
+  like `20261114120000_fix_canada_permanent_dst_slots`.
 
 - **The app container needs an explicit `dns:`.** Docker writes a
   container's `resolv.conf` once, at creation, and this host gets its
