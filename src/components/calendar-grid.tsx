@@ -10,21 +10,30 @@ import {
 } from "@/lib/calendar";
 import { maxFreeCount, type OverlapWindow } from "@/lib/overlap";
 import { getOverlapHeat, heatLegendCounts } from "@/lib/overlap-colors";
-import { utcToWallClock } from "@/lib/timezone";
+import {
+  addLocalDays,
+  formatLocalDateParts,
+  getLocalDateParts,
+  utcToWallClock,
+} from "@/lib/timezone";
+import { buildHourScale } from "@/lib/hour-scale";
 import { getMemberColor } from "@/lib/member-colors";
 import { OwnOccurrenceActions } from "@/components/own-occurrence-actions";
 import { OccurrenceConversionPreview } from "@/components/occurrence-conversion-preview";
+import { DragToAddColumn, type DragToAddGroup } from "@/components/drag-to-add-column";
+
+/**
+ * Form values for Mon–Sun, in grid column order. Not imported from the
+ * sidebar form's `WEEKDAYS`: that module is "use client", and a server
+ * component only gets an opaque reference to its exports, not the array.
+ */
+const WEEKDAY_VALUES = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 
 const HOURS = Array.from(
   { length: GRID_END_HOUR - GRID_START_HOUR },
   (_, i) => i + GRID_START_HOUR,
 );
 
-/** Row height for hours inside the peak band — sized for a comfortable tap target. */
-const PEAK_ROW_PX = 48;
-/** Row height for hours outside it. Compressed, never zero: an off-peak slot
- *  still has to be visible enough to notice and tap. */
-const OFFPEAK_ROW_PX = 10;
 /** Floor on a rendered block's height, so a 15-minute or fully-compressed
  *  window is still large enough to see and press. */
 const MIN_BLOCK_PX = 20;
@@ -48,58 +57,6 @@ function formatHour(hour: number): string {
   const period = hour >= 12 ? "PM" : "AM";
   const display = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
   return `${display} ${period}`;
-}
-
-interface HourScale {
-  /** Rendered pixel height of the row for `hour`. */
-  rowHeight(hour: number): number;
-  /** Pixels from the top of a day column to a fractional hour. */
-  offsetAt(hour: number): number;
-  /** Full pixel height of a day column. */
-  totalHeight: number;
-  isPeak(hour: number): boolean;
-}
-
-/**
- * Maps hours to vertical pixels, giving peak hours full height and
- * compressing the rest.
- *
- * The scale is cumulative and strictly increasing, which is the property the
- * whole approach rests on: because every hour still occupies *some* space and
- * hours never reorder, a window that crosses the peak boundary — an 11pm–2am
- * block, say — maps to one continuous run of pixels. It gets squashed as it
- * passes through the compressed region, but it never has to be split into
- * separate blocks or dropped, which is what would be required if off-peak
- * hours were removed from the grid instead of shrunk.
- *
- * When `expanded` is true every hour is at full height, i.e. the plain
- * uniform grid.
- */
-function buildHourScale(
-  peakStartHour: number,
-  peakEndHour: number,
-  expanded: boolean,
-): HourScale {
-  const isPeak = (hour: number) => hour >= peakStartHour && hour < peakEndHour;
-  const rowHeight = (hour: number) =>
-    expanded || isPeak(hour) ? PEAK_ROW_PX : OFFPEAK_ROW_PX;
-
-  // offsets[h] is the top of hour h; offsets[24] is the column height.
-  const offsets: number[] = [0];
-  for (let hour = GRID_START_HOUR; hour < GRID_END_HOUR; hour += 1) {
-    offsets.push(offsets[hour] + rowHeight(hour));
-  }
-
-  function offsetAt(hour: number): number {
-    const clamped = Math.min(Math.max(hour, GRID_START_HOUR), GRID_END_HOUR);
-    const whole = Math.floor(clamped);
-    if (whole >= GRID_END_HOUR) return offsets[GRID_END_HOUR];
-    // Interpolate within the hour's own row, so :30 lands halfway down a row
-    // whatever height that row happens to have.
-    return offsets[whole] + (clamped - whole) * rowHeight(whole);
-  }
-
-  return { rowHeight, offsetAt, totalHeight: offsets[GRID_END_HOUR], isPeak };
 }
 
 export interface CalendarLegendMember {
@@ -138,6 +95,10 @@ interface CalendarGridProps {
   /** Links for the phone-only day stepper. They roll over into the adjacent week. */
   prevDayHref: string;
   nextDayHref: string;
+  /** Every group the viewer is in — where a click-and-drag on the grid can add availability. */
+  groups: DragToAddGroup[];
+  /** Groups pre-ticked when adding from the grid (the current group filter). */
+  defaultGroupIds: string[];
 }
 
 /**
@@ -167,6 +128,8 @@ export function CalendarGrid({
   mobileDayIndex,
   prevDayHref,
   nextDayHref,
+  groups,
+  defaultGroupIds,
 }: CalendarGridProps) {
   const positioned = layoutGroupSlotsForWeek(occurrences, timeZone, weekDays);
   const overlapBands = layoutOverlapWindowsForWeek(overlapWindows, timeZone, weekDays);
@@ -187,6 +150,27 @@ export function CalendarGrid({
     peakEndHour < GRID_END_HOUR ? ` and ${formatHour(peakEndHour)} – 12 AM` : ""
   }`;
   const mobileDay = weekDays[mobileDayIndex];
+
+  // What each column's drag-to-add needs to know about its own day, worked
+  // out here on the server in the display zone rather than from the
+  // browser's clock, which may be in a different zone entirely.
+  const dayLabelFormat = new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    timeZone,
+  });
+  const weekdayFormat = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone });
+  const dayInfo = weekDays.map((day, index) => {
+    const parts = getLocalDateParts(day, timeZone);
+    return {
+      dateKey: formatLocalDateParts(parts),
+      nextDateKey: formatLocalDateParts(addLocalDays(parts, 1, timeZone)),
+      weekdayValue: WEEKDAY_VALUES[index],
+      dayLabel: dayLabelFormat.format(day),
+      weekdayPlural: `${weekdayFormat.format(day)}s`,
+    };
+  });
 
   return (
     <div className="space-y-3">
@@ -266,13 +250,20 @@ export function CalendarGrid({
           </div>
 
           {weekDays.map((day, dayIndex) => (
-            <div
+            <DragToAddColumn
               key={dayIndex}
-              data-day-index={dayIndex}
+              dayIndex={dayIndex}
               style={{ height: gridHeight }}
               className={`relative border-r border-zinc-100 last:border-r-0 dark:border-zinc-800/60 ${
                 isSameDay(day, today) ? "bg-zinc-50/50 dark:bg-zinc-800/20" : ""
               }`}
+              peakStartHour={peakStartHour}
+              peakEndHour={peakEndHour}
+              expandedHours={expandedHours}
+              timeZone={timeZone}
+              groups={groups}
+              defaultGroupIds={defaultGroupIds}
+              {...dayInfo[dayIndex]}
             >
               {HOURS.map((hour) => (
                 <div
@@ -427,7 +418,7 @@ export function CalendarGrid({
                     </span>
                   );
                 })}
-            </div>
+            </DragToAddColumn>
           ))}
         </div>
       </div>
@@ -480,6 +471,13 @@ export function CalendarGrid({
           );
         })}
       </div>
+      {groups.length > 0 && (
+        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+          <span className="font-medium">Tip:</span> click and drag down an empty
+          part of a day to add that time as available — or just click for an
+          hour. On a phone, press and hold, then drag.
+        </p>
+      )}
       <p className="text-xs text-zinc-400 dark:text-zinc-500">
         You can only add, edit, or remove your own slots — everyone else&apos;s
         availability here is read-only. For recurring blocks, tap to remove

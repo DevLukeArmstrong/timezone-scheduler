@@ -394,6 +394,8 @@ export default async function CalendarPage({
               mobileDayIndex={mobileDayIndex}
               prevDayHref={dayStepHref(-1)}
               nextDayHref={dayStepHref(1)}
+              groups={allGroups}
+              defaultGroupIds={selectedIds.length > 0 ? selectedIds : allGroupIds}
             />
           )}
 
