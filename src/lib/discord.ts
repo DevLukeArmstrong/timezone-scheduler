@@ -48,6 +48,34 @@ export class DiscordWebhookError extends Error {
 }
 
 /**
+ * Turns a thrown `fetch` rejection into something a group admin can act on.
+ *
+ * Node reports every connection-level failure as the same opaque "fetch
+ * failed" and hangs the real reason off `error.cause`, so reading only
+ * `.message` loses the one piece of information worth having. The
+ * difference is "Couldn't reach Discord: fetch failed", which tells you
+ * nothing, versus "...: getaddrinfo EAI_AGAIN discord.com", which names a
+ * resolver problem outright.
+ *
+ * A timeout from {@link REQUEST_TIMEOUT_MS} arrives as a cause-less
+ * DOMException, so it falls through to its own message.
+ */
+export function describeFetchFailure(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+
+  const cause = error.cause;
+  if (!(cause instanceof Error)) return error.message;
+
+  // Node's cause message usually already names the code ("getaddrinfo
+  // EAI_AGAIN discord.com"), so only prepend it when it doesn't.
+  const code = (cause as { code?: unknown }).code;
+  if (typeof code === "string" && !cause.message.includes(code)) {
+    return `${code}: ${cause.message}`;
+  }
+  return cause.message;
+}
+
+/**
  * Posts one plain-Markdown message to a webhook. Throws
  * {@link DiscordWebhookError} on any failure — callers decide whether that
  * matters: the "test message" form surfaces it, background jobs log and
@@ -70,7 +98,12 @@ export async function sendDiscordMessage(webhookUrl: string, content: string): P
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
+    const reason = describeFetchFailure(error);
+    // Logged as well as thrown: every caller but the test-message form
+    // swallows this deliberately, so a broken resolver or blocked egress
+    // otherwise presents as "the bot stopped posting" with nothing in the
+    // logs to explain it. Never log webhookUrl — it's a bearer credential.
+    console.error(`[discord] webhook POST failed: ${reason}`);
     throw new DiscordWebhookError(`Couldn't reach Discord: ${reason}`, 0);
   }
 
@@ -78,6 +111,7 @@ export async function sendDiscordMessage(webhookUrl: string, content: string): P
     // 404/401 mean the webhook was deleted or the token is wrong — the
     // group admin needs to paste a fresh one. 429 is rate limiting (30
     // posts/minute per webhook), which the volumes here never approach.
+    console.error(`[discord] webhook POST rejected: HTTP ${response.status}`);
     throw new DiscordWebhookError(
       `Discord rejected the message (HTTP ${response.status}).`,
       response.status,

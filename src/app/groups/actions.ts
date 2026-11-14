@@ -13,8 +13,10 @@ import {
   removeMember,
   renameGroup,
   sendGroupDiscordTestMessage,
+  sendOwnGroupDiscordTestMessage,
   setGroupDiscordWebhook,
   setGroupQuorumThreshold,
+  setOwnGroupDiscordWebhook,
 } from "@/lib/services/groups";
 import { ServiceError } from "@/lib/errors";
 
@@ -350,4 +352,70 @@ export async function setQuorumThresholdAction(
 
   revalidatePath("/groups");
   return { success: `You'll hear about it when ${threshold} or more are free together.` };
+}
+
+/**
+ * Saves or clears the acting member's *own* Discord webhook for a group.
+ * Open to every member, not just owners/admins — the point of the feature
+ * is that someone with no say over the group's channel can still route its
+ * posts to a server they run. `setOwnGroupDiscordWebhook` re-checks
+ * membership server-side.
+ *
+ * Like the group-level action, the URL only ever travels client → server
+ * here and is never rendered back out.
+ */
+export async function setOwnDiscordWebhookAction(
+  groupId: string,
+  _prevState: DiscordWebhookActionState,
+  formData: FormData,
+): Promise<DiscordWebhookActionState> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return { error: "Please sign in." };
+  }
+
+  const intent = String(formData.get("intent") ?? "save");
+  const webhookUrl = intent === "clear" ? null : String(formData.get("webhookUrl") ?? "");
+
+  try {
+    await setOwnGroupDiscordWebhook(groupId, userId, webhookUrl);
+  } catch (error) {
+    if (error instanceof ServiceError) {
+      return { error: error.message };
+    }
+    throw error;
+  }
+
+  revalidatePath("/groups");
+  return {
+    success: webhookUrl
+      ? "Your webhook is saved — this group's posts will go to your server too."
+      : "Your own Discord webhook is off. The group channel is unaffected.",
+  };
+}
+
+export async function sendOwnDiscordTestMessageAction(
+  groupId: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _prevState: DiscordWebhookActionState,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _formData: FormData,
+): Promise<DiscordWebhookActionState> {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return { error: "Please sign in." };
+  }
+
+  try {
+    await sendOwnGroupDiscordTestMessage(groupId, userId);
+  } catch (error) {
+    if (error instanceof ServiceError) {
+      return { error: error.message };
+    }
+    throw error;
+  }
+
+  return { success: "Test message sent — check your own server." };
 }

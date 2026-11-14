@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  describeFetchFailure,
   discordTimeRange,
   discordTimestamp,
   escapeDiscordMarkdown,
@@ -53,5 +54,45 @@ describe("escapeDiscordMarkdown", () => {
       "\\*\\*bold\\*\\* \\_it\\_ \\~x\\~ \\`c\\` \\|s\\| \\> q",
     );
     expect(escapeDiscordMarkdown("Luke")).toBe("Luke");
+  });
+});
+
+describe("describeFetchFailure", () => {
+  /** How Node reports a connection-level failure: opaque outer, real `cause`. */
+  function fetchFailure(cause: Error): Error {
+    return new Error("fetch failed", { cause });
+  }
+
+  it("unwraps the cause instead of reporting 'fetch failed'", () => {
+    // The real failure behind a container with no resolver configured.
+    const dnsError = Object.assign(new Error("getaddrinfo EAI_AGAIN discord.com"), {
+      code: "EAI_AGAIN",
+    });
+    expect(describeFetchFailure(fetchFailure(dnsError))).toBe(
+      "getaddrinfo EAI_AGAIN discord.com",
+    );
+  });
+
+  it("prepends the code when the cause's message doesn't already name it", () => {
+    const refused = Object.assign(new Error("connect ECONNREFUSED 10.0.0.1:443"), {
+      code: "SOME_OTHER_CODE",
+    });
+    expect(describeFetchFailure(fetchFailure(refused))).toBe(
+      "SOME_OTHER_CODE: connect ECONNREFUSED 10.0.0.1:443",
+    );
+  });
+
+  it("falls through to the error's own message when there is no cause", () => {
+    // What AbortSignal.timeout throws — a cause-less DOMException.
+    expect(describeFetchFailure(new Error("The operation was aborted due to timeout"))).toBe(
+      "The operation was aborted due to timeout",
+    );
+  });
+
+  it("survives a non-Error cause, and a non-Error throw", () => {
+    expect(describeFetchFailure(new Error("fetch failed", { cause: "nope" }))).toBe(
+      "fetch failed",
+    );
+    expect(describeFetchFailure("not an error at all")).toBe("not an error at all");
   });
 });

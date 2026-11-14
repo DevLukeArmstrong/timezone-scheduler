@@ -458,3 +458,97 @@ export async function sendGroupDiscordTestMessage(
     throw error;
   }
 }
+
+/**
+ * The membership row behind a member-owned setting, or null if the acting
+ * user isn't in the group at all.
+ *
+ * The counterpart to {@link getGroupForAdmin}: that one answers "may this
+ * person change the group's settings", this one answers "is this their own
+ * membership to change". Role is deliberately not consulted — a plain
+ * MEMBER configuring their own webhook is the entire point, and an OWNER
+ * has no more say over someone else's server than anyone else does.
+ */
+async function getOwnMembership(groupId: string, actingUserId: string) {
+  return db.groupMembership.findUnique({
+    where: { groupId_userId: { groupId, userId: actingUserId } },
+  });
+}
+
+/**
+ * Sets (or, with `null`, clears) the acting member's *own* Discord webhook
+ * for this group — the same posts the group channel gets, delivered to a
+ * server they run themselves.
+ *
+ * Only that member can call this for themselves; there is no admin path to
+ * writing someone else's, by design. Validates the URL's shape only — use
+ * {@link sendOwnGroupDiscordTestMessage} to prove it reaches a channel.
+ * The stored value never goes back to the client.
+ */
+export async function setOwnGroupDiscordWebhook(
+  groupId: string,
+  actingUserId: string,
+  webhookUrl: string | null,
+): Promise<void> {
+  const membership = await getOwnMembership(groupId, actingUserId);
+  if (!membership) {
+    throw new ForbiddenError("You're not a member of this group.");
+  }
+
+  const trimmed = webhookUrl?.trim() || null;
+  if (trimmed && !isDiscordWebhookUrl(trimmed)) {
+    throw new ValidationError(
+      "That doesn't look like a Discord webhook URL — it should start with https://discord.com/api/webhooks/.",
+    );
+  }
+
+  await db.groupMembership.update({
+    where: { id: membership.id },
+    data: { discordWebhookUrl: trimmed },
+  });
+  // Same reasoning as the group channel: a newly connected server is told
+  // about every quorum already on the calendar rather than starting blank.
+  if (trimmed) await markGroupsQuorumDirty([groupId]);
+}
+
+/** Posts a one-off "you're connected" message to the member's own webhook. */
+export async function sendOwnGroupDiscordTestMessage(
+  groupId: string,
+  actingUserId: string,
+): Promise<void> {
+  const membership = await getOwnMembership(groupId, actingUserId);
+  if (!membership) {
+    throw new ForbiddenError("You're not a member of this group.");
+  }
+  if (!membership.discordWebhookUrl) {
+    throw new ValidationError("Save your webhook URL first.");
+  }
+
+  const group = await db.group.findUnique({ where: { id: groupId }, select: { name: true } });
+
+  try {
+    await sendDiscordMessage(
+      membership.discordWebhookUrl,
+      `✅ Friendslop Scheduler is connected to your server for **${group?.name ?? "this group"}**. ` +
+        `You'll get the same availability updates, overlap alerts and weekly reminders as the group channel.`,
+    );
+  } catch (error) {
+    if (error instanceof DiscordWebhookError) {
+      throw new ValidationError(error.message);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Which of this user's groups they've pointed at their own server. Returns
+ * ids only — the UI needs "configured or not" per group and must never
+ * receive the URLs themselves.
+ */
+export async function listOwnDiscordWebhookGroupIds(userId: string): Promise<Set<string>> {
+  const memberships = await db.groupMembership.findMany({
+    where: { userId, discordWebhookUrl: { not: null } },
+    select: { groupId: true },
+  });
+  return new Set(memberships.map((membership) => membership.groupId));
+}

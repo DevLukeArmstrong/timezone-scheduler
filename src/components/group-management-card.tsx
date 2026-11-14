@@ -5,6 +5,7 @@ import { GroupNameHeading } from "@/components/group-name-heading";
 import { GroupDangerZone } from "@/components/group-danger-zone";
 import { InviteLinkCard } from "@/components/invite-link-card";
 import { DiscordWebhookCard } from "@/components/discord-webhook-card";
+import { MemberDiscordWebhookCard } from "@/components/member-discord-webhook-card";
 
 interface GroupManagementCardProps {
   group: Group;
@@ -15,17 +16,22 @@ interface GroupManagementCardProps {
   /** Whether the viewer is specifically this group's OWNER — gates delete
    * (owner-only) vs. leave (everyone else) in `GroupDangerZone`. */
   viewerIsOwner: boolean;
+  /** Whether the viewer has pointed this group's posts at a server of their
+   * own. A boolean, never the URL — same reasoning as the group's. */
+  viewerHasOwnWebhook: boolean;
 }
 
 /**
  * One group's management panel on `/groups`: its invite link (regenerable
- * by owners/admins), its Discord connection, and its member list
- * (promote/demote/remove for owners/admins, read-only for everyone else).
+ * by owners/admins), its Discord connection, each member's own Discord
+ * webhook, and its member list (promote/demote/remove for owners/admins,
+ * read-only for everyone else).
  *
  * This is a Server Component holding the full `Group` row, so it decides
  * what reaches the client: `inviteToken` (already a shareable link) goes
  * down; `discordWebhookUrl` (a channel-posting credential) never does —
- * only whether one is set.
+ * only whether one is set. The viewer's own webhook is handled the same
+ * way, and arrives already reduced to a boolean.
  */
 export function GroupManagementCard({
   group,
@@ -33,6 +39,7 @@ export function GroupManagementCard({
   viewerId,
   viewerIsAdmin,
   viewerIsOwner,
+  viewerHasOwnWebhook,
 }: GroupManagementCardProps) {
   return (
     <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
@@ -52,6 +59,8 @@ export function GroupManagementCard({
         memberCount={members.length}
         isAdmin={viewerIsAdmin}
       />
+
+      <MemberDiscordWebhookCard groupId={group.id} hasOwnWebhook={viewerHasOwnWebhook} />
 
       <GroupMemberList
         groupId={group.id}

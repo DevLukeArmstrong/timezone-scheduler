@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { getUserById } from "@/lib/services/users";
-import { listGroupMembers, listGroupsForUser } from "@/lib/services/groups";
+import { listGroupMembers, listGroupsForUser, listOwnDiscordWebhookGroupIds } from "@/lib/services/groups";
 import { AppHeader } from "@/components/app-header";
 import { CreateGroupForm } from "@/components/create-group-form";
 import { GamerOfTheMonthPopup } from "@/components/gamer-of-the-month-popup";
@@ -18,7 +18,10 @@ export default async function GroupsPage() {
   }
 
   const groups = await listGroupsForUser(user.id);
-  const memberLists = await Promise.all(groups.map((group) => listGroupMembers(group.id)));
+  const [memberLists, ownWebhookGroupIds] = await Promise.all([
+    Promise.all(groups.map((group) => listGroupMembers(group.id))),
+    listOwnDiscordWebhookGroupIds(user.id),
+  ]);
 
   return (
     <div className="flex min-h-full flex-col bg-zinc-50 dark:bg-zinc-950">
@@ -65,6 +68,7 @@ export default async function GroupsPage() {
                     viewerId={user.id}
                     viewerIsAdmin={viewerIsAdmin}
                     viewerIsOwner={viewerRole === "OWNER"}
+                    viewerHasOwnWebhook={ownWebhookGroupIds.has(group.id)}
                   />
                 );
               })}

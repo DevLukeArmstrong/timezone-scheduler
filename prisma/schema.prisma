@@ -263,6 +263,17 @@ model GroupMembership {
   userId   String
   role     GroupRole @default(MEMBER)
   joinedAt DateTime  @default(now())
+  /// This member's *own* Discord webhook for this group: the same posts the
+  /// group's channel gets, delivered to a server they run themselves. Null
+  /// means they just read the group's channel (the common case).
+  ///
+  /// Per-membership rather than per-user, so someone in several groups can
+  /// route each one to a different server — and leaving a group takes its
+  /// webhook with it. Settable by that member alone: owners and admins
+  /// control `Group.discordWebhookUrl`, never this. Like the group's, it is
+  /// a bearer credential, so it is never sent to the client and never
+  /// visible to anyone else — only a "configured or not" boolean.
+  discordWebhookUrl String?
 
   group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
