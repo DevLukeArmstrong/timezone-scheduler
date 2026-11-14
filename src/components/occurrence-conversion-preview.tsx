@@ -179,6 +179,9 @@ export function OccurrenceConversionPreview({
         ref={triggerRef}
         style={style}
         className={className}
+        // Lets the week grid's drag-to-add tell "clicked someone's block"
+        // (open their preview) from "clicked empty grid" (add an hour).
+        data-calendar-block=""
         onMouseEnter={supportsHover ? () => setOpen(true) : undefined}
         onMouseLeave={supportsHover ? () => setOpen(false) : undefined}
         onClick={supportsHover ? undefined : () => setOpen((value) => !value)}
