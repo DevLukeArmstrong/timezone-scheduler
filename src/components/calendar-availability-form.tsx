@@ -6,6 +6,7 @@ import {
   addCalendarAvailabilitySlotAction,
   type CalendarActionState,
 } from "@/app/calendar-actions";
+import { TimeZoneComparisonList } from "@/components/time-zone-comparison-list";
 import { TimeZoneSelect } from "@/components/timezone-select";
 import {
   addLocalDays,
@@ -14,7 +15,6 @@ import {
   localDateAndMinutesToUtc,
   parseLocalDateString,
   parseTimeToMinutes,
-  shortTimeZoneLabel,
 } from "@/lib/timezone";
 
 const initialState: CalendarActionState = {};
@@ -47,7 +47,7 @@ interface CalendarAvailabilityFormProps {
   /** Groups pre-checked in the multi-select (typically the calendar filter). */
   defaultGroupIds?: string[];
   defaultTimeZone: string;
-  /** From Account settings — shown as a live conversion preview below the time zone field. */
+  /** From Account settings — compared against the viewer's own zone below the time zone field. */
   favoriteTimeZones: string[];
 }
 
@@ -80,7 +80,7 @@ export function CalendarAvailabilityForm({
   const anchorDateStr = mode === "recurring" ? rangeStart || date : date;
 
   const conversions = useMemo(() => {
-    if (favoriteTimeZones.length === 0 || !isValidTimeZone(timeZone)) return [];
+    if (!isValidTimeZone(timeZone)) return [];
     const dateParts = parseLocalDateString(anchorDateStr);
     const startMinutes = parseTimeToMinutes(startTime);
     const endMinutes = parseTimeToMinutes(endTime);
@@ -94,8 +94,11 @@ export function CalendarAvailabilityForm({
       endMinutes <= startMinutes ? addLocalDays(dateParts, 1, timeZone) : dateParts;
     const endUtc = localDateAndMinutesToUtc(endDateParts, endMinutes, timeZone);
 
-    return formatTimeZoneConversions(startUtc, endUtc, favoriteTimeZones, timeZone);
-  }, [anchorDateStr, startTime, endTime, timeZone, favoriteTimeZones]);
+    // `defaultTimeZone` is the viewer's own (account) zone. It stays first in
+    // the list even when they enter times in some other zone above, so they
+    // always see what the window means for them.
+    return formatTimeZoneConversions(startUtc, endUtc, defaultTimeZone, favoriteTimeZones);
+  }, [anchorDateStr, startTime, endTime, timeZone, defaultTimeZone, favoriteTimeZones]);
 
   if (groups.length === 0) {
     return (
@@ -353,33 +356,20 @@ export function CalendarAvailabilityForm({
         </p>
       </div>
 
-      {favoriteTimeZones.length === 0 ? (
-        <p className="text-xs text-zinc-400 dark:text-zinc-500">
-          Add{" "}
-          <Link href="/account" className="font-medium underline">
-            favorite time zones
-          </Link>{" "}
-          to see what this converts to for them.
-        </p>
-      ) : (
-        <div className="space-y-1 rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-950/40">
-          <p className={LABEL_CLASSNAME}>Converts to</p>
-          {conversions.length === 0 ? (
-            <p className="text-xs text-zinc-400 dark:text-zinc-500">
-              Fill in a date and times above to see conversions.
-            </p>
-          ) : (
-            <ul className="space-y-0.5 text-sm text-zinc-700 dark:text-zinc-300">
-              {conversions.map(({ zone, range }) => (
-                <li key={zone} className="flex justify-between gap-2">
-                  <span className="text-zinc-500 dark:text-zinc-400">{shortTimeZoneLabel(zone)}</span>
-                  <span className="font-medium">{range}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+      <div className="space-y-1 rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-950/40">
+        <p className={LABEL_CLASSNAME}>Converts to</p>
+        {conversions.length === 0 ? (
+          <p className="text-xs text-zinc-400 dark:text-zinc-500">
+            Fill in a date and times above to see conversions.
+          </p>
+        ) : (
+          <TimeZoneComparisonList
+            conversions={conversions}
+            hasFavorites={favoriteTimeZones.length > 0}
+            size="sm"
+          />
+        )}
+      </div>
 
       {state.error && (
         <p className="text-sm text-red-600 dark:text-red-400">{state.error}</p>

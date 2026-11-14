@@ -28,7 +28,15 @@ import {
   rangeFromDrag,
   type MinuteRange,
 } from "@/lib/hour-scale";
-import { formatMinutesAsTime, parseTimeToMinutes } from "@/lib/timezone";
+import {
+  addLocalDays,
+  formatMinutesAsTime,
+  formatTimeZoneConversions,
+  localDateAndMinutesToUtc,
+  parseLocalDateString,
+  parseTimeToMinutes,
+} from "@/lib/timezone";
+import { TimeZoneComparisonList } from "@/components/time-zone-comparison-list";
 
 /** A mouse has to travel this far (px) before a press counts as a drag rather than a click. */
 const MOUSE_DRAG_THRESHOLD_PX = 4;
@@ -88,6 +96,8 @@ interface DragToAddColumnProps {
   groups: DragToAddGroup[];
   /** Groups pre-ticked in the popover — the calendar's current filter. */
   defaultGroupIds: string[];
+  /** From Account settings — compared against the viewer's own zone in the popover. */
+  favoriteTimeZones: string[];
 }
 
 /**
@@ -118,6 +128,7 @@ export function DragToAddColumn({
   timeZone,
   groups,
   defaultGroupIds,
+  favoriteTimeZones,
 }: DragToAddColumnProps) {
   const enabled = groups.length > 0;
   const scale = useMemo(
@@ -298,6 +309,7 @@ export function DragToAddColumn({
           timeZone={timeZone}
           groups={groups}
           defaultGroupIds={defaultGroupIds}
+          favoriteTimeZones={favoriteTimeZones}
           onClose={() => setSelection(null)}
         />
       )}
@@ -322,6 +334,7 @@ interface AddSelectionPopoverProps {
   timeZone: string;
   groups: DragToAddGroup[];
   defaultGroupIds: string[];
+  favoriteTimeZones: string[];
   onClose: () => void;
 }
 
@@ -344,6 +357,7 @@ function AddSelectionPopover({
   timeZone,
   groups,
   defaultGroupIds,
+  favoriteTimeZones,
   onClose,
 }: AddSelectionPopoverProps) {
   const [state, formAction, pending] = useActionState(
@@ -411,6 +425,21 @@ function AddSelectionPopover({
   // column (end 24:00, sent as 00:00) gets saved.
   const spansMidnight =
     startMinutes !== null && endMinutes !== null && endMinutes <= startMinutes;
+  // Only worth showing when there's someone to compare with: on its own,
+  // the viewer's zone would just repeat the times typed right above it.
+  const conversions = useMemo(() => {
+    const day = parseLocalDateString(dateKey);
+    if (favoriteTimeZones.length === 0 || !day || startMinutes === null || endMinutes === null) {
+      return [];
+    }
+    const endDay = endMinutes <= startMinutes ? addLocalDays(day, 1, timeZone) : day;
+    return formatTimeZoneConversions(
+      localDateAndMinutesToUtc(day, startMinutes, timeZone),
+      localDateAndMinutesToUtc(endDay, endMinutes, timeZone),
+      timeZone,
+      favoriteTimeZones,
+    );
+  }, [dateKey, startMinutes, endMinutes, timeZone, favoriteTimeZones]);
   const checkedIds = new Set(
     defaultGroupIds.length > 0 ? defaultGroupIds : groups.map((group) => group.id),
   );
@@ -486,6 +515,13 @@ function AddSelectionPopover({
           <p className="text-xs text-zinc-400 dark:text-zinc-500">
             Runs past midnight into the next day.
           </p>
+        )}
+
+        {conversions.length > 0 && (
+          <div className="space-y-1 rounded-lg border border-zinc-200 bg-zinc-50 p-2 dark:border-zinc-800 dark:bg-zinc-950/40">
+            <p className={LABEL_CLASSNAME}>Converts to</p>
+            <TimeZoneComparisonList conversions={conversions} hasFavorites />
+          </div>
         )}
 
         <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">

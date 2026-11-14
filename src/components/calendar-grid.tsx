@@ -263,6 +263,7 @@ export function CalendarGrid({
               timeZone={timeZone}
               groups={groups}
               defaultGroupIds={defaultGroupIds}
+              favoriteTimeZones={favoriteTimeZones}
               {...dayInfo[dayIndex]}
             >
               {HOURS.map((hour) => (

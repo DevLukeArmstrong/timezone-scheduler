@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { createPortal } from "react-dom";
 import {
   useEffect,
@@ -10,10 +9,11 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { formatTimeZoneConversions, shortTimeZoneLabel } from "@/lib/timezone";
+import { formatTimeZoneConversions } from "@/lib/timezone";
+import { TimeZoneComparisonList } from "@/components/time-zone-comparison-list";
 
-/** Popover width (`w-56` = 14rem) plus a little breathing room, used to keep it on-screen. */
-const POPOVER_WIDTH_PX = 232;
+/** Popover width (`w-64` = 16rem) plus a little breathing room, used to keep it on-screen. */
+const POPOVER_WIDTH_PX = 264;
 /** Below this much room, the popover opens above the trigger instead of below it. */
 const MIN_SPACE_BELOW_PX = 160;
 
@@ -95,10 +95,14 @@ function ConversionPopoverContent({
   displayTimeZone,
   favoriteTimeZones,
 }: ConversionPopoverContentProps) {
-  const conversions =
-    favoriteTimeZones.length === 0
-      ? []
-      : formatTimeZoneConversions(startUtc, endUtc, favoriteTimeZones, displayTimeZone);
+  // The calendar is drawn in the viewer's own zone, so that's what
+  // `displayTimeZone` is — and it leads the list for side-by-side comparison.
+  const conversions = formatTimeZoneConversions(
+    startUtc,
+    endUtc,
+    displayTimeZone,
+    favoriteTimeZones,
+  );
 
   return createPortal(
     <div
@@ -109,36 +113,13 @@ function ConversionPopoverContent({
         top: coords.placement === "below" ? coords.y : undefined,
         bottom: coords.placement === "above" ? window.innerHeight - coords.y : undefined,
       }}
-      className="z-50 w-56 space-y-1 rounded-lg border border-zinc-200 bg-white p-2.5 text-xs shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
+      className="z-50 w-64 space-y-1 rounded-lg border border-zinc-200 bg-white p-2.5 text-xs shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
     >
       <p className="font-medium text-zinc-700 dark:text-zinc-200">{heading}</p>
-      {favoriteTimeZones.length === 0 ? (
-        <p className="text-zinc-400 dark:text-zinc-500">
-          Add{" "}
-          <Link href="/account" className="font-medium underline">
-            favorite time zones
-          </Link>{" "}
-          to see what this converts to for them.
-        </p>
-      ) : conversions.length === 0 ? (
-        <p className="text-zinc-400 dark:text-zinc-500">
-          Already in every one of your favorite time zones.
-        </p>
-      ) : (
-        <ul className="space-y-0.5">
-          {conversions.map(({ zone, range }) => (
-            <li
-              key={zone}
-              className="flex justify-between gap-2 text-zinc-600 dark:text-zinc-300"
-            >
-              <span className="text-zinc-400 dark:text-zinc-500">
-                {shortTimeZoneLabel(zone)}
-              </span>
-              <span className="font-medium">{range}</span>
-            </li>
-          ))}
-        </ul>
-      )}
+      <TimeZoneComparisonList
+        conversions={conversions}
+        hasFavorites={favoriteTimeZones.length > 0}
+      />
     </div>,
     document.body,
   );

@@ -310,21 +310,28 @@ export interface TimeZoneConversion {
   zone: string;
   /** e.g. `"Mon 5:00 PM – Mon 7:00 PM"`. */
   range: string;
+  /** True for the viewer's own zone, which always comes first. */
+  isOwn: boolean;
 }
 
 /**
- * Formats a UTC instant range as a short weekday+time string in each of
- * `timeZones`, skipping `excludeZone` (the zone the range is already being
- * displayed in, so the list doesn't repeat it back). Shared by every "what
- * does this convert to" preview — the add-availability form and the
- * calendar grid's occurrence preview both call this rather than reimplement
- * the formatting.
+ * Formats a UTC instant range as a short weekday+time string in the viewer's
+ * own zone and then each of their favorite zones. Shared by every "what does
+ * this convert to" preview — the add-availability form, the drag-to-add
+ * popover, and the calendar grid's occurrence preview all call this rather
+ * than reimplement the formatting.
+ *
+ * The own zone is always included, first, even though the calendar is
+ * already drawn in it: the list is for comparing side by side, and "Mon
+ * 7 PM for me is Tue 2 PM for Mia" only reads at a glance with both halves
+ * in the same list. A favorite equal to the own zone is dropped so it
+ * doesn't appear twice.
  */
 export function formatTimeZoneConversions(
   startUtc: Date,
   endUtc: Date,
-  timeZones: string[],
-  excludeZone: string,
+  ownTimeZone: string,
+  favoriteTimeZones: string[],
 ): TimeZoneConversion[] {
   const format = (zone: string, instant: Date) =>
     new Intl.DateTimeFormat("en-US", {
@@ -334,10 +341,10 @@ export function formatTimeZoneConversions(
       timeZone: zone,
     }).format(instant);
 
-  return timeZones
-    .filter((zone) => zone !== excludeZone)
-    .map((zone) => ({
-      zone,
-      range: `${format(zone, startUtc)} – ${format(zone, endUtc)}`,
-    }));
+  const zones = [ownTimeZone, ...new Set(favoriteTimeZones.filter((zone) => zone !== ownTimeZone))];
+  return zones.map((zone) => ({
+    zone,
+    range: `${format(zone, startUtc)} – ${format(zone, endUtc)}`,
+    isOwn: zone === ownTimeZone,
+  }));
 }
